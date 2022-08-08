@@ -1,0 +1,4 @@
+**/__pycache__
+/meshing_app.egg-info/
+/build/
+/meshing_app/version.py
