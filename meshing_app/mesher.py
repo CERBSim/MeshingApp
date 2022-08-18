@@ -1,12 +1,13 @@
 
-from webapp.applications.base import BaseModel, DrawPNG
+from webapp.applications.base import BaseModel, DrawPNG, generateHTML, \
+    MakeHTMLScreenshot
 from webapp.applications.parameters import *
 from webapp.applications.steps import *
 from webapp.applications import register_application
 from .version import __version__
 from webapp.filetype import register_filetype, SpecialFile, save_upload_file
 from webapp.routines import runRoutine, register_routine
-from webapp.utils import time_now
+from webapp.utils import time_now, load_image
 
 import json
 import os
@@ -14,7 +15,9 @@ import os
 # TODO: Needs concept of "live resource" that uses available floating computing power for meshing,...
 
 @register_routine
-def runGeometry(geo_file, exterior, diam, glue_solids, nr=0):
+def runGeometry(geo_file, exterior, diam=None, glue_solids=False, nr=0,
+                write_render_data=True, write_step=True,
+                create_image=False):
     from netgen.occ import OCCGeometry, Glue, Box, Sphere
     from netgen.webgui import Draw
     geo = OCCGeometry(geo_file)
@@ -32,9 +35,28 @@ def runGeometry(geo_file, exterior, diam, glue_solids, nr=0):
             raise Exception(f"Exterior {exterior} unknown")
         ext -= shape
         shape = Glue([shape, ext])
+    for f in shape.faces:
+        f.col = (0.7,0.7,0.7)
     s = Draw(shape)
-    json.dump(s.GetData(), open(f"render_data_{nr}.json", "w"))
-    shape.WriteStep("geo.step")
+
+    if write_render_data:
+        json.dump(s.GetData(), open(f"render_data_{nr}.json", "w"))
+    bb = shape.bounding_box
+    diam = (bb[1]-bb[0])
+    data = { "parameters" : { "Diameter" : f"{diam.Norm():0.2f}",
+                                "Length (x-Axis)" : f"{diam.x:0.2f}",
+                                "Depth (y-Axis)" : f"{diam.y:0.2f}",
+                                "Height (z-Axis)" : f"{diam.z:0.2f}",
+                                "Unit" : "mm" } }
+    if create_image:
+        generateHTML(json.dumps(s.GetData()), "tmp.html")
+        MakeHTMLScreenshot("tmp.html", width=400, height=400)
+        img = load_image("tmp.png")
+        data["image"] = img
+
+    json.dump(data, open("data", "w"))
+    if write_step:
+        shape.WriteStep("geo.step")
 
 @register_filetype
 class GeometryFile(SpecialFile):
@@ -51,16 +73,24 @@ class GeometryFile(SpecialFile):
         os.makedirs(dir_, exist_ok=True)
         geofile = GeometryFile(path=dir_)
         save_upload_file(file, geofile.path("original.step"))
+        runRoutine(runGeometry, cwd=geofile.path(),
+                   geo_file="original.step",
+                   exterior=None, write_render_data=False,
+                   write_step=False, create_image=True)
+
 
 class GeometryUpload(ParameterStep):
     def __init__(self, path, name="Geometry Upload"):
         super().__init__(name=name)
         self.name = name
         self.path = path
-        self.geo_file = FileParameter(filetype="mesher_geo",
-                                      name="STEP-File",
-                                      file_endings=[".step"])
-        self.geo_file.emit_signal_on_change = "set_renderdata_nr"
+        # self.geo_file = FileParameter(filetype="mesher_geo",
+        #                               name="STEP-File",
+        #                               file_endings=[".step"])
+        self.geo_file = SpecialFileParameter("mesher_geo",
+                                             "STEP-File",
+                                             title="Select Geometry",
+                                             file_extensions=".step")
 
         self.ext_box = FloatParameter("Diameter (times geo size)",
                                       default=3)
@@ -80,6 +110,7 @@ class GeometryUpload(ParameterStep):
         self.last_data = self.get_data()["data"]
 
     def update(self, data, *args, **kwargs):
+        super().update(data, *args, **kwargs)
         dat = self.get_data()["data"]
         if dat != self.last_data and not self._initial_update:
             exterior = None
@@ -93,7 +124,6 @@ class GeometryUpload(ParameterStep):
             runRoutine(runGeometry, cwd=self.path(),
                        geo_file=self.geo_file.get_file().get_file_name(),
                        exterior=exterior, diam=diam, glue_solids=self.glue_solids.value)
-        super().update(data, *args, **kwargs)
         self.last_data = dat
 
 class GeometryStep(Step):
