@@ -177,19 +177,19 @@ class MeshingModel(BaseModel):
         self.grading = FloatParameter("Grading", default=0.3)
 
         def updateGranularity():
-            if self.granularity.selected == "Very Coarse":
+            if self.granularity.value == "Very Coarse":
                 self.grading.value = 0.7
                 return
-            if self.granularity.selected == "Coarse":
+            if self.granularity.value == "Coarse":
                 self.grading.value = 0.5
                 return
-            if self.granularity.selected == "Default":
+            if self.granularity.value == "Default":
                 self.grading.value = 0.3
                 return
-            if self.granularity.selected == "Moderate":
+            if self.granularity.value == "Moderate":
                 self.grading.value = 0.3
                 return
-            if self.granularity.selected == "Fine":
+            if self.granularity.value == "Fine":
                 self.grading.value = 0.2
                 return
             if self.granularity.value == "Very Fine":
@@ -240,8 +240,8 @@ class MeshingModel(BaseModel):
         return """
 # Mesh Result
 
-Number of Elements: {ne}
-Number of Surface Elements: {nse}
+| Elements         | {ne}  |
+| Surface Elements | {nse} |
 
 [[mesh]]
 """.format(ne=ne, nse=nse)
