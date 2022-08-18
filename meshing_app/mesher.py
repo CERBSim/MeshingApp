@@ -11,6 +11,7 @@ from webapp.utils import time_now, load_image
 
 import json
 import os
+import pickle
 
 # TODO: Needs concept of "live resource" that uses available floating computing power for meshing,...
 
@@ -56,7 +57,9 @@ def runGeometry(geo_file, exterior, diam=None, glue_solids=False, nr=0,
 
     json.dump(data, open("data", "w"))
     if write_step:
-        shape.WriteStep("geo.step")
+        # Step writing is buggy - better pickle (internal brep + our data)
+        pickle.dump(OCCGeometry(shape), file=open("modified.geo", "wb"))
+
 
 @register_filetype
 class GeometryFile(SpecialFile):
@@ -207,7 +210,7 @@ class MeshingModel(BaseModel):
         from netgen.occ import OCCGeometry
         from netgen.meshing import MeshingParameters
         from ngsolve import Mesh
-        geo = OCCGeometry(self.model_file.path("geo.step"))
+        geo = pickle.load(open(self.model_file.path("modified.geo"), "rb"))
         shape = geo.shape
         mats = self.geo_step.materials
         maxh = self.geo_step.meshsize_solids
@@ -240,6 +243,12 @@ class MeshingModel(BaseModel):
         return """
 # Mesh Result
 
+## Download
+
+[[download]]
+
+## Info
+
 | Elements         | {ne}  |
 | Surface Elements | {nse} |
 
@@ -249,6 +258,9 @@ class MeshingModel(BaseModel):
     def RenderObject(self, what):
         if what == "mesh":
             return DrawPNG(what, self.mesh)
+        if what == "download":
+            return { "type" : "download",
+                     "what" : "mesh" }
 
     @staticmethod
     def getDescription():
