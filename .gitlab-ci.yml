@@ -1,0 +1,30 @@
+stages:
+  - deploy
+
+variables:
+  PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
+
+cache:
+  paths:
+    - .cache/pip
+    - venv/
+
+before_script:
+  - python -V
+  - pip install virtualenv
+  - python -m virtualenv venv
+  - source venv/bin/activate
+
+deploy_main:
+  stage: deploy
+  image: python:3.9
+  only:
+    - main
+  tags:
+    - webapp
+  script:
+    - git describe --tags
+    - rm -rf dist/*
+    - python setup.py bdist_wheel
+    - pip install twine
+    - TWINE_PASSWORD=${DEPLOY_TOKEN} TWINE_USERNAME=gitlab-ci-token python -m twine upload --verbose --repository-url ${CI_API_V4_URL}/projects/36/packages/pypi dist/*
