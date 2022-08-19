@@ -18,7 +18,7 @@ deploy_main:
   stage: deploy
   image: python:3.9
   only:
-    - main
+    - master
   tags:
     - webapp
   script:
