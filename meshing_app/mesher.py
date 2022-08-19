@@ -175,9 +175,11 @@ class MeshingModel(BaseModel):
                                             "Coarse",
                                             "Moderate",
                                             "Fine",
-                                            "Very Fine"])
+                                            "Very Fine"],
+                                           variant="buttons")
         self.maxh = FloatParameter("Max Meshsize", default=None)
-        self.grading = FloatParameter("Grading", default=0.3)
+        self.grading = FloatParameter("Grading", default=0.3,
+                                      info= "Limits how fast elements can grow away from local refinement. From 0 to 1, with 0 constant fine element size and 1 immediatly allowing as coarse as possible")
 
         def updateGranularity():
             if self.granularity.value == "Very Coarse":
