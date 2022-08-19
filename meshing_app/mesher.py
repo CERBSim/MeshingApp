@@ -180,38 +180,64 @@ class MeshingModel(BaseModel):
         self.maxh = FloatParameter("Max Meshsize", default=None)
         self.grading = FloatParameter("Grading", default=0.3,
                                       info= "Limits how fast elements can grow away from local refinement. From 0 to 1, with 0 constant fine element size and 1 immediatly allowing as coarse as possible")
+        self.curvaturesafety = FloatParameter("Curvature Safety", default=2,
+                                              info="On curved surfaces restrict meshisize to value times radius")
+        self.segmentsperedge = FloatParameter("Segments per edge", default=1,
+                                              info="Restict meshsize on edges to value times edge length. To disable set to 0.")
+        self.closeedgefac = FloatParameter("Close edge factor", default=0,
+                                           info="Restrict meshsize if edges come close to each other (but do not join in a vertex). Disable by setting to 0.")
 
         def updateGranularity():
             if self.granularity.value == "Very Coarse":
                 self.grading.value = 0.7
+                self.curvaturesafety.value = 1
+                self.closeedgefac.value = 0
+                self.segmentsperedge.value = 0.3
                 return
             if self.granularity.value == "Coarse":
                 self.grading.value = 0.5
+                self.curvaturesafety.value = 1.5
+                self.closeedgefac.value = 0
+                self.segmentsperedge.value = 0.5
                 return
             if self.granularity.value == "Default":
                 self.grading.value = 0.3
+                self.curvaturesafety.value = 2
+                self.closeedgefac.value = 0
+                self.segmentsperedge.value = 1
                 return
             if self.granularity.value == "Moderate":
                 self.grading.value = 0.3
+                self.curvaturesafety.value = 2
+                self.closeedgefac.value = 2
+                self.segmentsperedge.value = 1
                 return
             if self.granularity.value == "Fine":
                 self.grading.value = 0.2
+                self.curvaturesafety.value = 3
+                self.closeedgefac.value = 3.5
+                self.segmentsperedge.value = 2
                 return
             if self.granularity.value == "Very Fine":
                 self.grading.value = 0.1
+                self.curvaturesafety.value = 5
+                self.closeedgefac.value = 5
+                self.segmentsperedge.value = 3
                 return
         self.granularity.on_update = updateGranularity
 
         self.mparam_step = ParameterStep(name="Meshing Parameters",
                                          parameters=[self.granularity,
                                                      self.maxh,
-                                                     self.grading])
+                                                     self.grading,
+                                                     self.curvaturesafety,
+                                                     self.segmentsperedge,
+                                                     self.closeedgefac])
         self.steps = [self.geo_upload, self.geo_step, self.mparam_step]
 
     def run(self, result_dir):
         from netgen.occ import OCCGeometry
-        from netgen.meshing import MeshingParameters
-        from ngsolve import Mesh
+        from ngsolve import Mesh, Draw
         geo = pickle.load(open(self.model_file.path("modified.geo"), "rb"))
         shape = geo.shape
         mats = self.geo_step.materials
@@ -223,16 +249,20 @@ class MeshingModel(BaseModel):
                 s.maxh = maxh[i]
         bnds = self.geo_step.boundaries
         maxh = self.geo_step.meshsize_faces
-        for i, f in enumerate(shape.faces):
+        unique_faces = set(shape.faces)
+        for i, f in enumerate(unique_faces):
             if bnds is not None and bnds[i] is not None:
                 f.name = bnds[i]
             if maxh is not None and maxh[i] is not None:
                 f.maxh = maxh[i]
-        kwargs = {}
+        kwargs = { "grading" : self.grading.value,
+                   "curvaturesafety" : self.curvaturesafety.value,
+                   "segmentsperedge" : self.segmentsperedge.value,
+                   "closeedgefac" : self.closeedgefac.value }
         if self.maxh.value is not None:
             kwargs["maxh"] = self.maxh.value
-        kwargs["grading"] = self.grading.value
         geo = OCCGeometry(shape)
+        Draw(geo)
         mesh = geo.GenerateMesh(**kwargs)
         mesh.Save(os.path.join(result_dir, "mesh.vol.gz"))
         self.mesh = Mesh(mesh)
@@ -251,6 +281,8 @@ class MeshingModel(BaseModel):
 
 ## Info
 
+|                  |       |
+|------------------|:------|
 | Elements         | {ne}  |
 | Surface Elements | {nse} |
 
