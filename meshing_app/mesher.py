@@ -249,7 +249,10 @@ class MeshingModel(BaseModel):
                 s.maxh = maxh[i]
         bnds = self.geo_step.boundaries
         maxh = self.geo_step.meshsize_faces
-        unique_faces = set(shape.faces)
+        unique_faces = []
+        for f in shape.faces:
+            if f not in unique_faces:
+                unique_faces.append(f)
         for i, f in enumerate(unique_faces):
             if bnds is not None and bnds[i] is not None:
                 f.name = bnds[i]
