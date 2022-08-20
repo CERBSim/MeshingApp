@@ -25,7 +25,7 @@ setup(
     version=version,
     description="Meshing app for Webapp",
     packages=find_packages("."),
-    package_data={ name: ["*.png"] },
+    package_data={name: ["*.png"]},
     install_requires=[],
     entry_points={"webapp.plugin": ["simple = meshing_app"]},
 )
