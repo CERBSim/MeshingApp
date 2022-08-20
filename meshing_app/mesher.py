@@ -266,16 +266,60 @@ class MeshingModel(BaseModel):
             kwargs["maxh"] = self.maxh.value
         geo = OCCGeometry(shape)
         Draw(geo)
-        mesh = geo.GenerateMesh(**kwargs)
-        mesh.Save(os.path.join(result_dir, "mesh.vol.gz"))
-        self.mesh = Mesh(mesh)
+        try:
+            mesh = geo.GenerateMesh(**kwargs)
+            self.meshing_failed = False
+            mesh.Save(os.path.join(result_dir, "mesh.vol.gz"))
+            print("self.name = ", self.model_file.name)
+            if self.db is not None:
+                print("db is set")
+                # TODO: this should work nicer..
+                f = File(
+                    model_type="mesh",
+                    name=self.model_file.name,
+                    file_type="mesh",
+                    user_id=self.user_id,
+                )
+                self.db.add(f)
+                self.db.commit()
+                self.db.refresh(f)
+                f.save()
+
+                class FileHelper:
+                    def __init__(self, f):
+                        self.file = f
+
+                MeshFile.upload(
+                    f.path(),
+                    FileHelper(open(os.path.join(result_dir, "mesh.vol.gz"), "rb")),
+                )
+            self.mesh = Mesh(mesh)
+        except Exception as e:
+            if str(e) == "Meshing failed!":
+                print("Meshing failed")
+                self.meshing_failed = True
+                # TODO: Visualize failed part of mesh
+                # import netgen.libngpy._meshing as nm
+
+                # self.mesh = Mesh(nm._GetGlobalMesh())
+            else:
+                raise e
         self.info = { "ne" : self.mesh.ne,
                       "nse" : self.mesh.nface,
                       }
 
     def getReportTemplate(self):
         ne, nse = self.info["ne"], self.info["nse"]
-        return """
+        if self.meshing_failed:
+            # TODO: Show region of problem (together with edge mesh)
+            return """
+# Meshing failed!
+
+TODO: Visualize problem region
+
+"""
+        else:
+            return """
 # Mesh Result
 
 ## Download
