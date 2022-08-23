@@ -11,6 +11,7 @@ from .version import __version__
 from webapp.filetype import register_filetype, SpecialFile, save_upload_file
 from webapp.routines import runRoutine, register_routine
 from webapp.utils import time_now, load_image
+from webapp.applications.run import upload_file
 
 import json
 import os
@@ -314,29 +315,9 @@ class MeshingModel(BaseModel):
             mesh = geo.GenerateMesh(**kwargs)
             self.meshing_failed = False
             mesh.Save(os.path.join(result_dir, "mesh.vol.gz"))
-            print("self.name = ", self.model_file.name)
-            if self.db is not None:
-                print("db is set")
-                # TODO: this should work nicer..
-                f = File(
-                    model_type="mesh",
-                    name=self.model_file.name,
-                    file_type="mesh",
-                    user_id=self.user_id,
-                )
-                self.db.add(f)
-                self.db.commit()
-                self.db.refresh(f)
-                f.save()
-
-                class FileHelper:
-                    def __init__(self, f):
-                        self.file = f
-
-                MeshFile.upload(
-                    f.path(),
-                    FileHelper(open(os.path.join(result_dir, "mesh.vol.gz"), "rb")),
-                )
+            upload_file(name=self.model_file.name + ".vol.gz",
+                        filepath=os.path.join(result_dir, "mesh.vol.gz"),
+                        filetype="mesh")
             self.mesh = Mesh(mesh)
         except Exception as e:
             if str(e) == "Meshing failed!":
