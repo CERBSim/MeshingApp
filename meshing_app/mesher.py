@@ -191,7 +191,7 @@ class GeometryStep(Step):
 class MeshingModel(BaseModel):
     modelName = "Meshing"
     modelVersion = __version__
-    modelGroup = "cerbsim"
+    modelGroup = "default"
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
