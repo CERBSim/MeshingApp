@@ -126,14 +126,48 @@ class GeometryUpload(ParameterStep):
             parameters=[[], [self.ext_box], [self.ext_sphere]],
             selected=[True, False, False],
         )
+
+        self.shell_or_2d = SelectionDialog(
+            name=None,
+            options=["2D Geometry", "3D Shell"],
+            value="2D Geometry",
+            variant="buttons",
+        )
+
+        def updateVisiblityShellOr2d():
+            f = self.geo_file.get_file()
+            if f is not None:
+                data = f.load()
+                if "Number of Solids" in data["parameters"]:
+                    self.shell_or_2d.visible = (
+                        data["parameters"]["Number of Solids"] == 0
+                    )
+                else:
+                    self.shell_or_2d.visible = False
+            else:
+                self.shell_or_2d.visible = False
+
+        self.geo_file.on_update = updateVisiblityShellOr2d
+
         self.glue_solids = Switch("Glue solids", default=False)
-        self.parameters = [self.geo_file, self.glue_solids, self.exterior_domain]
+        self.parameters = [
+            self.geo_file,
+            self.shell_or_2d,
+            self.glue_solids,
+            self.exterior_domain,
+        ]
         self.last_data = self.get_data()["data"]
 
-    def update(self, data, *args, **kwargs):
+    def validate(self):
+        if self.geo_file.value is None:
+            raise Exception("No geometry selected!")
+
+    def update(self, data, *args, single_item=False, **kwargs):
         super().update(data, *args, **kwargs)
         dat = self.get_data()["data"]
-        if dat != self.last_data and not self._initial_update:
+        if self._initial_update:
+            self.geo_file.on_update()
+        if dat != self.last_data and not self._initial_update and not single_item:
             exterior = None
             diam = 3
             if self.exterior_domain.selected[1]:
@@ -159,8 +193,10 @@ class GeometryStep(Step):
         self.upload_step = upload_step
         self.materials = []
         self.boundaries = []
+        self.edge_names = []
         self.meshsize_solids = []
         self.meshsize_faces = []
+        self.meshsize_edges = []
         self._render_data = None
 
     def update(self, data, db=None, **kwargs):
@@ -169,10 +205,14 @@ class GeometryStep(Step):
             self.materials = data["solid_names"]
         if "names" in data:
             self.boundaries = data["names"]
+        if "edge_names" in data:
+            self.edge_names = data["edge_names"]
         if "meshsize_solids" in data:
             self.meshsize_solids = data["meshsize_solids"]
         if "meshsize_faces" in data:
             self.meshsize_faces = data["meshsize_faces"]
+        if "meshsize_edges" in data:
+            self.meshsize_edges = data["meshsize_edges"]
 
     def get_data(self):
         return {
@@ -181,8 +221,10 @@ class GeometryStep(Step):
             "data": {
                 "solid_names": self.materials,
                 "names": self.boundaries,
+                "edge_names": self.edge_names,
                 "meshsize_solids": self.meshsize_solids,
                 "meshsize_faces": self.meshsize_faces,
+                "meshsize_edges": self.meshsize_edges,
             },
         }
 
@@ -286,9 +328,9 @@ class MeshingModel(BaseModel):
         mats = self.geo_step.materials
         maxh = self.geo_step.meshsize_solids
         for i, s in enumerate(shape.solids):
-            if mats is not None and mats[i] is not None:
+            if len(mats) > i and mats[i] is not None:
                 s.name = mats[i]
-            if maxh is not None and maxh[i] is not None:
+            if len(maxh) > i and maxh[i] is not None:
                 s.maxh = maxh[i]
         bnds = self.geo_step.boundaries
         maxh = self.geo_step.meshsize_faces
@@ -297,10 +339,22 @@ class MeshingModel(BaseModel):
             if f not in unique_faces:
                 unique_faces.append(f)
         for i, f in enumerate(unique_faces):
-            if bnds is not None and bnds[i] is not None:
+            if len(bnds) > i and bnds[i] is not None:
                 f.name = bnds[i]
-            if maxh is not None and maxh[i] is not None:
+            if len(maxh) > i and maxh[i] is not None:
                 f.maxh = maxh[i]
+        enames = self.geo_step.edge_names
+        maxh = self.geo_step.meshsize_edges
+        unique_edges = []
+        for e in shape.edges:
+            if e not in unique_edges:
+                unique_edges.append(e)
+        for i, e in enumerate(unique_edges):
+            if len(enames) > i and enames[i] is not None:
+                e.name = enames[i]
+            if len(maxh) > i and maxh[i] is not None:
+                e.maxh = maxh[i]
+
         kwargs = {
             "grading": self.grading.value,
             "curvaturesafety": self.curvaturesafety.value,
@@ -309,15 +363,23 @@ class MeshingModel(BaseModel):
         }
         if self.maxh.value is not None:
             kwargs["maxh"] = self.maxh.value
-        geo = OCCGeometry(shape)
+        dim = 3
+        if (
+            len(shape.solids) == 0
+            and self.geo_upload.shell_or_2d.value == "2D Geometry"
+        ):
+            dim = 2
+        geo = OCCGeometry(shape, dim=dim)
         Draw(geo)
         try:
             mesh = geo.GenerateMesh(**kwargs)
             self.meshing_failed = False
             mesh.Save(os.path.join(result_dir, "mesh.vol.gz"))
-            upload_file(name=self.model_file.name + ".vol.gz",
-                        filepath=os.path.join(result_dir, "mesh.vol.gz"),
-                        filetype="mesh")
+            upload_file(
+                name=self.model_file.name + ".vol.gz",
+                filepath=os.path.join(result_dir, "mesh.vol.gz"),
+                filetype="mesh",
+            )
             self.mesh = Mesh(mesh)
         except Exception as e:
             if str(e) == "Meshing failed!":
@@ -366,6 +428,7 @@ TODO: Visualize problem region
 
     def RenderObject(self, what):
         if what == "mesh":
+            self.mesh.Curve(3)
             return DrawPNG(what, self.mesh)
         if what == "download":
             return {"type": "download", "what": "mesh"}
