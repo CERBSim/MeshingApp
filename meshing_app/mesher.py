@@ -133,6 +133,7 @@ class GeometryUpload(ParameterStep):
             value="2D Geometry",
             variant="buttons",
         )
+        self.timestamp = 0
 
         def updateVisiblityShellOr2d():
             f = self.geo_file.get_file()
@@ -158,16 +159,23 @@ class GeometryUpload(ParameterStep):
         ]
         self.last_data = self.get_data()["data"]
 
+    def get_data(self):
+        return { **super().get_data(),
+                 "timestamp" : self.timestamp }
+
     def validate(self):
         if self.geo_file.value is None:
             raise Exception("No geometry selected!")
 
     def update(self, data, *args, single_item=False, **kwargs):
         super().update(data, *args, **kwargs)
-        dat = self.get_data()["data"]
+        if "timestamp" in data:
+            self.timestamp = data["timestamp"]
         if self._initial_update:
             self.geo_file.on_update()
-        if dat != self.last_data and not self._initial_update and not single_item:
+        # TODO: Find a cleaner way of doing a timestamp (python hash function doesn't work)
+        timestamp = json.dumps(self.get_data()["data"])
+        if timestamp != self.timestamp and not self._initial_update and not single_item:
             exterior = None
             diam = 3
             if self.exterior_domain.selected[1]:
@@ -184,8 +192,7 @@ class GeometryUpload(ParameterStep):
                 diam=diam,
                 glue_solids=self.glue_solids.value,
             )
-        self.last_data = dat
-
+            self.timestamp = timestamp
 
 class GeometryStep(Step):
     def __init__(self, upload_step, name="Geometry"):
