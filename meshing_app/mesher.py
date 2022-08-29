@@ -64,6 +64,10 @@ def runGeometry(
             "Depth (y-Axis)": f"{diam.y:0.2f}",
             "Height (z-Axis)": f"{diam.z:0.2f}",
             "Unit": "mm",
+            "Number of Solids" : len(shape.solids),
+            "Number of Faces" : len(set(shape.faces)),
+            "Number of Edges" : len(set(shape.edges)),
+            "Number of Vertices" : len(set(shape.vertices))
         }
     }
     if create_image:
