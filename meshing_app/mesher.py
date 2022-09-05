@@ -118,17 +118,17 @@ class GeometryUpload(ParameterStep):
         #                               name="STEP-File",
         #                               file_endings=[".step"])
         self.geo_file = SpecialFileParameter(
-            "mesher_geo", "STEP-File", title="Select Geometry", file_extensions=".step"
+            "mesher_geo", "STEP-File", file_extensions=[".step"]
         )
 
         self.ext_box = FloatParameter("Diameter (times geo size)", default=3)
         self.ext_sphere = FloatParameter("Diameter (times geo size)", default=3)
 
-        self.exterior_domain = Selector(
+        self.exterior_domain = SelectionDialog(
             "Add exterior domain",
             options=["None", "Box", "Sphere"],
-            parameters=[[], [self.ext_box], [self.ext_sphere]],
-            selected=[True, False, False],
+            parameters=[Label(""), self.ext_box, self.ext_sphere],
+            value="None"
         )
 
         self.shell_or_2d = SelectionDialog(
@@ -137,7 +137,6 @@ class GeometryUpload(ParameterStep):
             value="2D Geometry",
             variant="buttons",
         )
-        self.timestamp = 0
 
         def updateVisiblityShellOr2d():
             f = self.geo_file.get_file()
@@ -161,31 +160,36 @@ class GeometryUpload(ParameterStep):
             self.glue_solids,
             self.exterior_domain,
         ]
-        self.last_data = self.get_data()["data"]
+        self.last_data = self.get_input_data()
 
-    def get_data(self):
-        return { **super().get_data(),
-                 "timestamp" : self.timestamp }
+    def get_dynamic_data(self):
+        return { **super().get_dynamic_data() }
 
     def validate(self):
         if self.geo_file.value is None:
             raise Exception("No geometry selected!")
 
-    def update(self, data, *args, single_item=False, **kwargs):
+    def update(self, data, *args, **kwargs):
+        nr = 0
+        ts_file = self.path(f"render_data_{nr}.json.timestamp")
+        if os.path.exists(ts_file):
+            old_timestamp = open(ts_file).read()
+        else:
+            old_timestamp = None
         super().update(data, *args, **kwargs)
-        if "timestamp" in data:
-            self.timestamp = data["timestamp"]
         if self._initial_update:
             self.geo_file.on_update()
         # TODO: Find a cleaner way of doing a timestamp (python hash function doesn't work)
-        timestamp = json.dumps(self.get_data()["data"])
-        if timestamp != self.timestamp and not self._initial_update and not single_item:
+        timestamp = json.dumps(self.get_input_data())
+        print("timestamp\n", timestamp, "\n", old_timestamp)
+        if timestamp != old_timestamp and not self._initial_update:
+            print("rebuild render data", self.path(), self.geo_file.get_file().get_file_name())
             exterior = None
             diam = 3
-            if self.exterior_domain.selected[1]:
+            if self.exterior_domain.IsSelected(1):
                 exterior = "box"
                 diam = self.ext_box.value
-            elif self.exterior_domain.selected[2]:
+            elif self.exterior_domain.IsSelected(2):
                 exterior = "sphere"
                 diam = self.ext_sphere.value
             runRoutine(
@@ -194,13 +198,14 @@ class GeometryUpload(ParameterStep):
                 geo_file=self.geo_file.get_file().get_file_name(),
                 exterior=exterior,
                 diam=diam,
+                nr=nr,
                 glue_solids=self.glue_solids.value,
             )
-            self.timestamp = timestamp
+            open(ts_file, "w").write(timestamp)
 
 class GeometryStep(Step):
     def __init__(self, upload_step, name="Geometry"):
-        self.name = name
+        super().__init__(name=name)
         self.upload_step = upload_step
         self.materials = []
         self.boundaries = []
@@ -211,7 +216,7 @@ class GeometryStep(Step):
         self._render_data = None
 
     def update(self, data, db=None, **kwargs):
-        data = data["data"]
+        print("update geometry step", data)
         if "solid_names" in data:
             self.materials = data["solid_names"]
         if "names" in data:
@@ -225,18 +230,21 @@ class GeometryStep(Step):
         if "meshsize_edges" in data:
             self.meshsize_edges = data["meshsize_edges"]
 
-    def get_data(self):
+    def get_static_data(self):
         return {
+            **super().get_static_data(),
             "type": "Geometry",
-            "name": self.name,
-            "data": {
-                "solid_names": self.materials,
-                "names": self.boundaries,
-                "edge_names": self.edge_names,
-                "meshsize_solids": self.meshsize_solids,
-                "meshsize_faces": self.meshsize_faces,
-                "meshsize_edges": self.meshsize_edges,
-            },
+            }
+
+    def get_input_data(self):
+        return {
+            **super().get_input_data(),
+            "solid_names": self.materials,
+            "names": self.boundaries,
+            "edge_names": self.edge_names,
+            "meshsize_solids": self.meshsize_solids,
+            "meshsize_faces": self.meshsize_faces,
+            "meshsize_edges": self.meshsize_edges,
         }
 
 
@@ -329,6 +337,7 @@ class MeshingModel(BaseModel):
             ],
         )
         self.steps = [self.geo_upload, self.geo_step, self.mparam_step]
+        self.mesh = None
 
     def run(self, result_dir):
         from netgen.occ import OCCGeometry
