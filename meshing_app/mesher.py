@@ -150,6 +150,7 @@ class GeometryUpload(ParameterStep):
                     self.shell_or_2d.visible = False
             else:
                 self.shell_or_2d.visible = False
+            return 1
 
         self.geo_file.on_update = updateVisiblityShellOr2d
 
