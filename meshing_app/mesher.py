@@ -64,10 +64,10 @@ def runGeometry(
             "Depth (y-Axis)": f"{diam.y:0.2f}",
             "Height (z-Axis)": f"{diam.z:0.2f}",
             "Unit": "mm",
-            "Number of Solids" : len(shape.solids),
-            "Number of Faces" : len(set(shape.faces)),
-            "Number of Edges" : len(set(shape.edges)),
-            "Number of Vertices" : len(set(shape.vertices))
+            "Number of Solids": len(shape.solids),
+            "Number of Faces": len(set(shape.faces)),
+            "Number of Edges": len(set(shape.edges)),
+            "Number of Vertices": len(set(shape.vertices)),
         }
     }
     if create_image:
@@ -128,7 +128,7 @@ class GeometryUpload(ParameterStep):
             "Add exterior domain",
             options=["None", "Box", "Sphere"],
             parameters=[Label(""), self.ext_box, self.ext_sphere],
-            value="None"
+            value="None",
         )
 
         self.shell_or_2d = SelectionDialog(
@@ -164,7 +164,7 @@ class GeometryUpload(ParameterStep):
         self.last_data = self.get_input_data()
 
     def get_dynamic_data(self):
-        return { **super().get_dynamic_data() }
+        return {**super().get_dynamic_data()}
 
     def validate(self):
         if self.geo_file.value is None:
@@ -182,9 +182,7 @@ class GeometryUpload(ParameterStep):
             self.geo_file.on_update()
         # TODO: Find a cleaner way of doing a timestamp (python hash function doesn't work)
         timestamp = json.dumps(self.get_input_data())
-        print("timestamp\n", timestamp, "\n", old_timestamp)
         if timestamp != old_timestamp and not self._initial_update:
-            print("rebuild render data", self.path(), self.geo_file.get_file().get_file_name())
             exterior = None
             diam = 3
             if self.exterior_domain.IsSelected(1):
@@ -204,6 +202,7 @@ class GeometryUpload(ParameterStep):
             )
             open(ts_file, "w").write(timestamp)
 
+
 class GeometryStep(Step):
     def __init__(self, upload_step, name="Geometry"):
         super().__init__(name=name)
@@ -217,7 +216,6 @@ class GeometryStep(Step):
         self._render_data = None
 
     def update(self, data, db=None, **kwargs):
-        print("update geometry step", data)
         if "solid_names" in data:
             self.materials = data["solid_names"]
         if "names" in data:
@@ -235,7 +233,7 @@ class GeometryStep(Step):
         return {
             **super().get_static_data(),
             "type": "Geometry",
-            }
+        }
 
     def get_input_data(self):
         return {
