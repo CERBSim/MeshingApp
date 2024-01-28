@@ -28,8 +28,10 @@ class MeshingModel(BaseModel):
         super().__init__(*args, **kwargs)
         self.geo_upload = FileInput(id="geo_file", label="Geometry Upload",
                                      extensions="step,stp,brep")
+        self.geo = None
         self.webgui = WebguiComponent(id="webgui",
                                       initial_load=False, enable_sidebar=False)
+        self.webgui.on_click = self.on_webgui_click
 
         async def draw_geo(comp):
             if not self.geo_upload.input.name:
@@ -39,6 +41,10 @@ class MeshingModel(BaseModel):
                 import netgen.occ as ngocc
                 with self.geo_upload as geofile:
                     self.geo = ngocc.OCCGeometry(geofile)
+                    self.faces = self.geo.shape.faces
+                    self.faces.col = (0.7, 0.7, 0.7)
+                    self.edges = self.geo.shape.edges
+                    self.edges.col = (0,0,0)
                     await self.webgui.draw(self.geo.shape)
 
         self.geo_upload.on_load = draw_geo
@@ -72,6 +78,17 @@ class MeshingModel(BaseModel):
         self.component = Group(id="main",
                                components=[self.geo_upload,
                                            horiz_group])
+
+    async def on_webgui_click(self, args):
+        if self.geo is None:
+            return
+        self.faces.col = (0.7, 0.7, 0.7)
+        self.edges.col = (0, 0, 0)
+        if args["dim"] == 2:
+            self.faces[args["index"]].col = (1, 0, 0)
+        if args["dim"] == 1:
+            self.edges[args["index"]].col = (1, 0, 0)
+        await self.webgui.draw(self.geo.shape)
 
     @staticmethod
     def getDescription():
