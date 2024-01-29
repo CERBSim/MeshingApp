@@ -7,9 +7,14 @@ from webapp_client import (
     Loading,
     WebguiComponent,
     FloatParameter,
-    Switch
+    StringParameter,
+    Switch,
+    Steps,
+    updateFrontendComponents
 )
 from .version import __version__
+
+import asyncio
 
 async def installModules():
     try:
@@ -17,6 +22,70 @@ async def installModules():
     except:
         import webapp_frontend
         await webapp_frontend.installModule("netgen")
+
+class ShapeComponent(Group):
+    def __init__(self, id, shape, redraw_command, highlight_color,
+                 default_color):
+        super().__init__(id=id, flat=False, horizontal=True)
+        self.shape = shape
+        self.name = StringParameter(id=id + "_name", name="Name", default=shape.name)
+        self.maxh = FloatParameter(id=id + "_maxh", name="Meshsize", default=shape.maxh)
+        self.visible = Switch(id=id + "_visible", name="Visible", default=True)
+        self.redraw = redraw_command
+        self._selected = False
+        self._visible = True
+        self._default_color = default_color
+        self._highlight_color = highlight_color
+        self._set_color()
+
+    @property
+    def selected(self):
+        return self._selected
+
+    def _set_color(self):
+        if not self._visible:
+            self._color = (0,0,0,0)
+        else:
+            if self._selected:
+                self._color = self._highlight_color
+            else:
+                self._color = self._default_color
+        self.shape.col = self._color
+
+    @selected.setter
+    def selected(self, selected):
+        self._selected = selected
+        self._set_color()
+
+class ShapeGroup(Group):
+    def __init__(self, *args, redraw_command=None,
+                 default_color=(0,0,0), highlight_color=(1,0,0),
+                 **kwargs):
+        super().__init__(*args, **kwargs)
+        self._redraw_command = redraw_command
+        self._default_color = default_color
+        self._highlight_color = highlight_color
+        self._shapes = []
+
+    def __getitem__(self, index):
+        return self.components[index]
+
+    @property
+    def shapes(self):
+        return self._shapes
+
+    @shapes.setter
+    def shapes(self, shapes):
+        self._shapes = shapes
+        self.shape_components = []
+        for i, shape in enumerate(shapes):
+            self.shape_components.append(
+                ShapeComponent(id=self._id + "_" + str(i),
+                               shape=shape,
+                               redraw_command=self._redraw_command,
+                               default_color=self._default_color,
+                               highlight_color=self._highlight_color))
+        self.components = self.shape_components
 
 @register_application
 class MeshingModel(BaseModel):
@@ -32,19 +101,27 @@ class MeshingModel(BaseModel):
         self.webgui = WebguiComponent(id="webgui",
                                       initial_load=False, enable_sidebar=False)
         self.webgui.on_click = self.on_webgui_click
-        self._clicked_faces = set()
-        self._clicked_edges = set()
+        self.solids = ShapeGroup(id="solids", name="Solids")
+        self.faces = ShapeGroup(id="faces", name="Faces",
+                                default_color=(0.7, 0.7, 0.7),
+                                redraw_command=lambda : asyncio.run(self.redraw()))
+        self.edges = ShapeGroup(id="edges", name="Edges",
+                                default_color=(0, 0, 0),
+                                redraw_command=lambda: asyncio.run(self.redraw()))
+        self.shape_selector = Steps(steps=[self.solids, self.faces, self.edges])
 
         async def draw_geo(comp):
-            if not self.geo_upload.data:
+            if not self.geo_upload.name:
                 return
             async with Loading(self.webgui):
                 await installModules()
                 import netgen.occ as ngocc
                 with self.geo_upload as geofile:
                     self.geo = ngocc.OCCGeometry(geofile)
-                    self.faces = self.geo.shape.faces
-                    self.edges = self.geo.shape.edges
+                    self.solids.shapes = self.geo.shape.solids
+                    self.faces.shapes=self.geo.shape.faces
+                    self.edges.shapes=self.geo.shape.edges
+                    await updateFrontendComponents([self.solids, self.faces, self.edges])
                     await self.redraw()
 
         self.geo_upload.on_load = draw_geo
@@ -71,44 +148,34 @@ class MeshingModel(BaseModel):
                                                generate_mesh_button])
 
         horiz_group = Group(id="horiz_group",
-                            components=[self.webgui,
-                                        meshing_parameters],
+                            components=[self.webgui, self.shape_selector],
                             horizontal=True)
         
         self.component = Group(id="main",
                                components=[self.geo_upload,
-                                           horiz_group])
+                                           horiz_group,
+                                           meshing_parameters])
 
     async def on_webgui_click(self, args):
-        print("on click args", args)
         if args["did_move"]:
             return
         if self.geo is None:
             return
         if not args["ctrlKey"]:
-            self._clicked_edges = set()
-            self._clicked_faces = set()
+            for f in self.faces.components:
+                if f.selected:
+                    f.selected = False
+            for e in self.edges.components:
+                if e.selected:
+                    e.selected = False
         if args["dim"] == 2:
-            if args["index"] in self._clicked_faces:
-                self._clicked_faces.remove(args["index"])
-            else:
-                self._clicked_faces.add(args["index"])
+            self.faces[args["index"]].selected = not self.faces[args["index"]].selected
         if args["dim"] == 1:
-            if args["index"] in self._clicked_edges:
-                self._clicked_edges.remove(args["index"])
-            else:
-                self._clicked_edges.add(args["index"])
+            self.edges[args["index"]].selected = not self.edges[args["index"]].selected
         await self.redraw()
 
     async def redraw(self):
-        self.faces.col = (0.7, 0.7, 0.7)
-        self.edges.col = (0, 0, 0)
-        for face in self._clicked_faces:
-            self.faces[face].col = (1, 0, 0)
-        for edge in self._clicked_edges:
-            self.edges[edge].col = (1, 0, 0)
         await self.webgui.draw(self.geo.shape)
-
 
     @staticmethod
     def getDescription():
