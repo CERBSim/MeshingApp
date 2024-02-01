@@ -11,6 +11,7 @@ from webapp_client import (
     Steps,
     updateFrontendComponents,
     ensurePipPackage,
+    Button
 )
 from .version import __version__
 
@@ -112,6 +113,7 @@ class MeshingModel(BaseModel):
         self.webgui2 = WebguiComponent(
             id="webgui2", initial_load=False, enable_sidebar=False
         )
+        self.webgui2.dynamic.visible=False
         self.webgui.on_click = self.on_webgui_click
         self.solids = ShapeGroup(id="solids", name="Solids")
         self.faces = ShapeGroup(
@@ -140,42 +142,45 @@ class MeshingModel(BaseModel):
                     self.solids.shapes = self.geo.shape.solids
                     self.faces.shapes = self.geo.shape.faces
                     self.edges.shapes = self.geo.shape.edges
-                    await updateFrontendComponents(
-                        [self.solids, self.faces, self.edges]
-                    )
+                    self.generate_mesh_button.dynamic.disabled = False
+                    await updateFrontendComponents([self.solids, self.faces, self.edges, self.generate_mesh_button])
                     await self.redraw()
 
         self.geo_upload.on_load = draw_geo
         self.geo_upload.on_update = draw_geo
-
         self.meshsize = FloatParameter(
             id="meshsize", name="Meshsize", default=None, required=False
         )
-        generate_mesh_button = Switch(id="genmesh", name="Create Mesh", default=False)
 
-        async def generate_mesh(comp):
+        self.generate_mesh_button = Button(id="genmesh", label="Create Mesh",
+                                           disabled=True)
+        async def generate_mesh():
             meshing_pars = {}
             print("call generate mesh")
-            if self.meshsize.value is not None:
-                meshing_pars["maxh"] = float(self.meshsize.value)
-            self.mesh = self.geo.GenerateMesh(**meshing_pars)
-            await self.webgui2.draw(self.mesh)
+            async with Loading(self.component):
+                print("meshsize = ", self.meshsize.value)
+                if self.meshsize.value is not None:
+                    meshing_pars["maxh"] = float(self.meshsize.value)
+                self.mesh = self.geo.GenerateMesh(**meshing_pars)
+                # await self.webgui.draw(self.mesh)
+                self.webgui.dynamic.visible=False
+                self.webgui2.dynamic.visible=True
+                await updateFrontendComponents([self.webgui, self.webgui2])
+                await self.webgui2.draw(self.mesh)
 
-        generate_mesh_button.on_update = generate_mesh
+        self.generate_mesh_button.on_click = generate_mesh
 
-        meshing_parameters = Group(
-            id="meshing_parameters", components=[self.meshsize, generate_mesh_button]
-        )
+        meshing_parameters = Group(id="meshing_parameters",
+                                   components=[self.meshsize,
+                                               self.generate_mesh_button])
 
-        horiz_group = Group(
-            id="horiz_group",
-            components=[self.webgui, self.webgui2, self.shape_selector],
-            horizontal=True,
-        )
-
-        self.component = Group(
-            id="main", components=[self.geo_upload, horiz_group, meshing_parameters]
-        )
+        horiz_group = Group(id="horiz_group",
+                            components=[self.shape_selector, self.webgui, self.webgui2],
+                            horizontal=True)
+        self.component = Group(id="main",
+                               components=[self.geo_upload,
+                                           horiz_group,
+                                           meshing_parameters])
 
     async def on_webgui_click(self, args):
         if args["did_move"]:
