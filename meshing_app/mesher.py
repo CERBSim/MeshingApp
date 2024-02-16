@@ -48,13 +48,16 @@ class ShapeComponent(Group):
                 self._color = self._highlight_color
             else:
                 self._color = self._default_color
-        self.shape.col = self._color
+        if self._id.startswith("solids"):
+            if self.visible:
+                self.shape.faces.col = self._color
+        else:
+            self.shape.col = self._color
 
     @selected.setter
     def selected(self, selected):
         self._selected = selected
         self._set_color()
-
 
 class ShapeGroup(Group):
     def __init__(
@@ -128,7 +131,12 @@ class MeshingModel(BaseModel):
             default_color=(0, 0, 0),
             redraw_command=lambda: asyncio.run(self.redraw()),
         )
+        self.active_step = "solids"
         self.shape_selector = Steps(steps=[self.solids, self.faces, self.edges])
+        def update_active_step(val):
+            print("update active step, val = ", val.dynamic.value)
+
+        self.shape_selector.on_update = update_active_step
 
         async def draw_geo(comp):
             if not self.geo_upload.name:
@@ -148,21 +156,32 @@ class MeshingModel(BaseModel):
 
         self.geo_upload.on_load = draw_geo
         self.geo_upload.on_update = draw_geo
+        async def do_nothing(*_):
+            await updateFrontendComponents([])
         self.meshsize = FloatParameter(
-            id="meshsize", name="Meshsize", default=None, required=False
+            id="meshsize", name="Meshsize", default=None, required=False,
+            on_update=do_nothing
         )
+
+        geo_button = Button(id="geobutton", label="Geometry")
+        mesh_button = Button(id="meshbutton", label="Mesh")
+        async def set_webgui_visible(geo):
+            self.webgui.dynamic.visible = geo
+            self.webgui2.dynamic.visible = not geo
+            await updateFrontendComponents([self.webgui, self.webgui2])
+        geo_button.on_click = lambda *_: set_webgui_visible(True)
+        mesh_button.on_click = lambda *_: set_webgui_visible(False)
+
+        webgui_selector = Group(id="webgui_selector", components=[geo_button, mesh_button], horizontal=True)
 
         self.generate_mesh_button = Button(id="genmesh", label="Create Mesh",
                                            disabled=True)
-        async def generate_mesh():
+        async def generate_mesh(btn):
             meshing_pars = {}
-            print("call generate mesh")
             async with Loading(self.component):
-                print("meshsize = ", self.meshsize.value)
                 if self.meshsize.value is not None:
                     meshing_pars["maxh"] = float(self.meshsize.value)
                 self.mesh = self.geo.GenerateMesh(**meshing_pars)
-                # await self.webgui.draw(self.mesh)
                 self.webgui.dynamic.visible=False
                 self.webgui2.dynamic.visible=True
                 await updateFrontendComponents([self.webgui, self.webgui2])
@@ -174,8 +193,10 @@ class MeshingModel(BaseModel):
                                    components=[self.meshsize,
                                                self.generate_mesh_button])
 
+        webgui_group = Group(id="webgui_group",
+                             components=[webgui_selector, self.webgui, self.webgui2])
         horiz_group = Group(id="horiz_group",
-                            components=[self.shape_selector, self.webgui, self.webgui2],
+                            components=[self.shape_selector, webgui_group],
                             horizontal=True)
         self.component = Group(id="main",
                                components=[self.geo_upload,
