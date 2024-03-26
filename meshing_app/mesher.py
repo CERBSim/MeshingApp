@@ -50,7 +50,7 @@ class ShapeGroup(Group):
         highlight_color=(1, 0, 0),
         **kwargs
     ):
-        self.selector = SelectionDialog(id=id + "_selector", labels=[], values=[],
+        self.selector = SelectionDialog(id=id + "_sel_group", labels=[], values=[],
                                         variant="dropdown")
         self.selector.on("update", self.on_shape_select)
         self._redraw_command = redraw_command
@@ -154,7 +154,7 @@ class MeshingModel(BaseModel):
         self.edges = ShapeGroup(id="edge_selector", name="Edges",
                                 visible=False, redraw_command=self.redraw)
 
-        self.shape_selector = Group(id="shape_selector",
+        self.shape_selector = Group(id="shape_selector_group",
                                     components=[self.shapetype_selector,
                                                 self.solids,
                                                 self.faces,
@@ -164,10 +164,9 @@ class MeshingModel(BaseModel):
             if not self.geo_upload.input.name:
                 return
             import os
-            name, ext = os.path.splitext(self.geo_upload.input.name)
+            name, ext = os.path.splitext(self.geo_upload.input.name[0])
             name = name.split("/")[-1]
             self.input.name = name
-            self.update_frontend()
             with Loading(self.webgui):
                 import netgen.occ as ngocc
                 with self.geo_upload as geofile:
