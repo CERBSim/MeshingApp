@@ -40,7 +40,7 @@ class ShapeComponent(Group):
         self._selected = selected
         self._set_color()
 
-class ShapeGroup(Group):
+class ShapeGroup(DynamicGroup):
     def __init__(
         self,
         id,
@@ -130,6 +130,7 @@ class MeshingModel(BaseModel):
         self.webgui2 = WebguiComponent(
             id="webgui2"
         )
+        self.dimensions_label = Label(id="dimensions_label", label="Dimensions:")
         self.webgui2.dynamic.visible=False
         self.webgui.on_click = self.on_webgui_click
 
