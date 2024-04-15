@@ -44,7 +44,7 @@ class FileUpload(QFile):
         self.on_clear(self.clear_file)
         self.filename = None
         self.file_data = None
-        self.on_rejected(self.show_warning)
+        self.on_rejected(self.user_warning.show)
         self.on_file_loaded_callbacks = []
 
     def clear_file(self):
@@ -73,9 +73,6 @@ class FileUpload(QFile):
             self.file_data = self.app._load_data_file(self.filename).encode()
         print("model value = ", self.model_value)
 
-    def show_warning(self):
-        self.user_warning.model_value = True
-        self.user_warning.update_frontend()
 
     def __enter__(self) -> list[str] | str:
         # Create a temporary file storing the data
