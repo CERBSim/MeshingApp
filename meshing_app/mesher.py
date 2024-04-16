@@ -385,8 +385,8 @@ class MeshingModel(BaseModel):
             style="padding-top:100px;text-align:center;",
         )
         welcome_text = Div(
+            "Upload a geometry file to get started. Currently supported geometry formats: step (*.step, *.stp), brep (*.brep)",
             style="text-align:center;",
-            children="Upload a geometry file to get started. Currently supported geometry formats: step (*.step, *.stp), brep (*.brep)",
         )
 
         # This is not really nice...
@@ -403,7 +403,7 @@ class MeshingModel(BaseModel):
     def create_layout(self):
         self.create_geo_upload_layout()
         self.create_main_layout()
-        self.component = Div([self.geo_upload_dialog, self.main_dialog])
+        self.component = Div(self.geo_upload_dialog, self.main_dialog)
 
     def update(self, *args, **kwargs):
         super().update(*args, **kwargs)
@@ -465,5 +465,5 @@ class MeshingModel(BaseModel):
             bordered=True,
         )
         small_device = QCard(flat=True, classes="lt-md", children=inner)
-        self.main_dialog = Div([small_device, big_device, footer])
+        self.main_dialog = Div(small_device, big_device, footer)
         self.main_dialog.hidden = True
