@@ -27,5 +27,5 @@ setup(
     packages=find_packages("."),
     package_data={name: ["*.png"]},
     install_requires=[],
-    entry_points={"webapp.plugin": ["simple = meshing_app"]},
+    entry_points={"webapp.plugin": ["simple = meshing_app.appconfig"]},
 )

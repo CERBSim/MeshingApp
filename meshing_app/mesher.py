@@ -2,6 +2,7 @@ from webapp_client import *
 from webapp_client.components import Row, Col, Div, FileUpload, Heading
 from webapp_client.qcomponents import *
 from .version import __version__
+from webapp_client.utils import compute_node
 
 btn_style = "margin: 1px; padding: 5px;"
 
@@ -24,7 +25,7 @@ class ShapeComponent(QItem):
         ).on_update_model_value(self.set_maxh)
         super().__init__(
             children=Row(
-                [QItemSection(children=c) for c in [self.nameParam, self.maxh]]
+                *[QItemSection(children=c) for c in [self.nameParam, self.maxh]]
             )
         )
         self._shape = shape
@@ -114,12 +115,6 @@ class ShapeGroup(DynamicGroup):
 
 @register_application
 class MeshingModel(BaseModel):
-    modelName = "Meshing"
-    modelVersion = __version__
-    modelGroup = "default"
-    canRun = False
-    frontend_pip_dependencies = ["netgen"]
-
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.geo = None
@@ -337,14 +332,12 @@ class MeshingModel(BaseModel):
         # Here we actually just need to reset the face and edge colors
         self.draw()
 
-    @staticmethod
-    def getDescription():
-        return "Create mesh from uploaded geometry to be used in further simulations"
-
-    def run(self, result_dir):
-        pass
+    @compute_node
+    def run(self):
+        print("Running meshing")
 
     def _update_geometry(self):
+        print("update geometry")
         with self.geo_upload as geofile:
             import netgen.occ as ngocc
 
@@ -354,20 +347,14 @@ class MeshingModel(BaseModel):
             comp = ShapeComponent("face_" + str(i + 1), face)
             face_components.append(comp)
         self.faces.children = face_components
-        self.faces.update_frontend()
-        self.geo_upload_dialog.hidden = True
+        self.geo_upload_dialog.hidden = False
         self.main_dialog.hidden = False
-        self.geo_upload_dialog.update_frontend()
-        self.main_dialog.update_frontend()
 
     def restart(self):
         self.geo = None
-        self.main_dialog.hidden = True
-        self.main_dialog.update_frontend()
+        self.main_dialog.hidden = False
         self.geo_upload.model_value = None
-        self.geo_upload.update_frontend()
         self.geo_upload_dialog.hidden = False
-        self.geo_upload_dialog.update_frontend()
 
     def create_geo_upload_layout(self):
         self.geo_upload = FileUpload(
@@ -378,7 +365,7 @@ class MeshingModel(BaseModel):
             error_title="Error in Geometry Upload",
             error_message="Please upload a valid geometry file",
         )
-        self.geo_upload.on_file_loaded_callbacks.append(self._update_geometry)
+        self.geo_upload.on_file_loaded(self._update_geometry)
         welcome_header = Heading(
             "Welcome to the Meshing App!",
             6,
@@ -434,6 +421,7 @@ class MeshingModel(BaseModel):
             flat=True,
             children=QTooltip(children="Generate Mesh"),
         )
+        gen_mesh_btn.on_click(self.run)
         download_mesh_btn = QBtn(
             icon="download", flat=True, children=QTooltip(children="Download Mesh")
         )
@@ -466,4 +454,4 @@ class MeshingModel(BaseModel):
         )
         small_device = QCard(flat=True, classes="lt-md", children=inner)
         self.main_dialog = Div(small_device, big_device, footer)
-        self.main_dialog.hidden = True
+        self.main_dialog.hidden = False
