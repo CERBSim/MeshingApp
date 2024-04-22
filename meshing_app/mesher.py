@@ -4,25 +4,28 @@ from webapp_client.qcomponents import *
 from webapp_client.visualization import WebguiComponent
 from .version import __version__
 
+
 class FileDownload(QBtn):
-    def __init__(self, id, *args, **kwargs):
+    def __init__(self, *children, id, **kwargs):
         """A button that downloads a file on click.
 
         The file can be set with set_file(filename, file_data=None, file_location=None).
 
         The file data is stored in the storage of the app and only retrieved when the button is clicked.
         """
-        super().__init__(id=id, *args, **kwargs)
+        super().__init__(*children, id=id, **kwargs)
         self._filename = None
         self.disable = True
-        self.on("click",self.download)
+        self.on("click", self.download)
 
     def set_file(self, filename, file_data=None, file_location=None):
         """Set the file to be downloaded on button click as file with name filename.
 
         If file_data is set, it is used as file content, otherwise the file is read from file_location. If no file location is given as well, the file is read from the current directory with the given filename.
         """
-        assert file_data is None or file_location is None, "Only file data or file location can be set"
+        assert (
+            file_data is None or file_location is None
+        ), "Only file data or file location can be set"
         self._filename = filename
         if file_data is not None:
             self.storage.set("file", file_data)
@@ -46,6 +49,7 @@ class FileDownload(QBtn):
         self._filename = data
         self.disable = self._filename == None
 
+
 class MainLayout(Div):
     def __init__(self, *args):
         super().__init__(*args, id="main")
@@ -54,17 +58,22 @@ class MainLayout(Div):
         self.webgui = WebguiComponent(id="webgui_geo")
         self.mesh_webgui = WebguiComponent(id="webgui_mesh")
         self.mesh_webgui.hidden = True
+
         def update_gui():
             print("update gui, value = ", self.gui_toggle.model_value)
             self.webgui.hidden = self.gui_toggle.model_value != "geo"
             self.mesh_webgui.hidden = self.gui_toggle.model_value != "mesh"
-        self.gui_toggle = QBtnToggle(push=True,
-            model_value="geo", options=[{ "label" : "Geometry",
-                                               "value" : "geo" },
-                                             { "label" : "Mesh",
-                                               "value" : "mesh" }], style="margin-top:40px;",
+
+        self.gui_toggle = QBtnToggle(
+            push=True,
+            model_value="geo",
+            options=[
+                {"label": "Geometry", "value": "geo"},
+                {"label": "Mesh", "value": "mesh"},
+            ],
+            style="margin-top:40px;",
         ).on_update_model_value(update_gui)
-        
+
         def click_webgui(args):
             if self.shapetype_selector.model_value == "faces":
                 dim = args["value"]["dim"]
@@ -72,69 +81,94 @@ class MainLayout(Div):
                     index = args["value"]["index"]
                     print("index = ", index)
             print("click_webgui = ", args)
-        self.webgui.on_click(click_webgui)
-        webgui_card = QCard(style="margin:20px;",
-                            children=[Centered(self.gui_toggle), self.webgui, self.mesh_webgui])
-        self.shapetype_selector = QBtnToggle(push=True,
-            model_value="faces", options=[{ "label" : "Solids",
-                                           "value" : "solids" },
-                                          { "label" : "Faces",
-                                            "value" : "faces" },
-                                          { "label" : "Edges",
-                                            "value" : "edges" }],
-            style="margin-bottom:10px;")
-        self.shapetype_selector.on_update_model_value(self.update_table_visiblity)
-        columns = [{ "name" : "index", "label" : "Index", "field": "index" },
-                   { "name" : "name", "label" : "Name", "field": "name" },
-                   { "name" : "maxh", "label" : "Maxh", "field": "maxh" },
-                   { "name" : "visible", "label" : "Visible", "field": "visible" }]
-        self.solid_table = QTable(
-                                  row_key="index",
-                                  flat=True,
-                                  columns=columns,
-                                  style="min-width: 450px;",
-                                  )
-        self.solid_table.hidden = True
-        self.face_table = QTable(row_key="index",
-                                 flat=True,
-                                 columns=columns,
-                                 selection="multiple",
-                                 style="min-width: 450px;",
-                                 )
-        self.edge_table = QTable(row_key="index",
-                                 flat=True,
-                                 columns=columns,
-                                 style="min-width: 450px;",
-                                 )
-        self.edge_table.hidden = True
-        settings = QCard(style="margin:20px;padding:20px;",
-                         children=[
-                             QCardSection(
-                                 children=[
-                                     Centered(self.shapetype_selector),
-                                     self.solid_table,
-                                     self.face_table,
-                                     self.edge_table])])
 
-        generate_mesh_button = QBtn(fab=True,
-                                    icon="mdi-arrow-right-drop-circle-outline",
-                                    color="primary",
-                                    children=QTooltip(children="Generate Mesh"),
-                                    style="position: absolute; right: 140px; bottom: 20px;").on_click(self.generate_mesh)
+        self.webgui.on_click(click_webgui)
+        webgui_card = QCard(
+            Centered(self.gui_toggle),
+            self.webgui,
+            self.mesh_webgui,
+            style="margin:20px;",
+        )
+        self.shapetype_selector = QBtnToggle(
+            push=True,
+            model_value="faces",
+            options=[
+                {"label": "Solids", "value": "solids"},
+                {"label": "Faces", "value": "faces"},
+                {"label": "Edges", "value": "edges"},
+            ],
+            style="margin-bottom:10px;",
+        )
+        self.shapetype_selector.on_update_model_value(self.update_table_visiblity)
+        columns = [
+            {"name": "index", "label": "Index", "field": "index"},
+            {"name": "name", "label": "Name", "field": "name"},
+            {"name": "maxh", "label": "Maxh", "field": "maxh"},
+            {"name": "visible", "label": "Visible", "field": "visible"},
+        ]
+        self.solid_table = QTable(
+            row_key="index",
+            flat=True,
+            columns=columns,
+            style="min-width: 450px;",
+        )
+        self.solid_table.hidden = True
+        self.face_table = QTable(
+            row_key="index",
+            flat=True,
+            columns=columns,
+            selection="multiple",
+            style="min-width: 450px;",
+        )
+
+        def create_body_cell(props):
+            return [QTd(QInput(label=props["col"]["label"]))]
+
+        self.face_table.slot_body_cell_name("name", create_body_cell)
+
+        self.edge_table = QTable(
+            row_key="index",
+            flat=True,
+            columns=columns,
+            style="min-width: 450px;",
+        )
+        self.edge_table.hidden = True
+        settings = QCard(
+            QCardSection(
+                Centered(self.shapetype_selector),
+                self.solid_table,
+                self.face_table,
+                self.edge_table,
+            ),
+            style="margin:20px;padding:20px;",
+        )
+
+        generate_mesh_button = QBtn(
+            QTooltip("Generate Mesh"),
+            fab=True,
+            icon="mdi-arrow-right-drop-circle-outline",
+            color="primary",
+            style="position: absolute; right: 140px; bottom: 20px;",
+        ).on_click(self.generate_mesh)
 
         self.download_mesh_button = FileDownload(
+            QTooltip("Download Mesh"),
             id="download_mesh",
             fab=True,
             icon="download",
             color="primary",
             disable=True,
-            children=QTooltip(children="Download Mesh"),
-            style="position: absolute; right: 80px; bottom: 20px;")
-        self.children = [Centered(Row(settings, webgui_card)),
-                         generate_mesh_button, self.download_mesh_button]
+            style="position: absolute; right: 80px; bottom: 20px;",
+        )
+        self.children = [
+            Centered(Row(settings, webgui_card)),
+            generate_mesh_button,
+            self.download_mesh_button,
+        ]
 
     def generate_mesh(self):
         import netgen.occ as ngocc
+
         # ngocc.ResetGlobalShapeProperties()
         geo = ngocc.OCCGeometry(self.shape)
         mesh = geo.GenerateMesh()
@@ -157,26 +191,39 @@ class MainLayout(Div):
         self.webgui.draw(self.shape)
         solid_rows = []
         for i, solid in enumerate(self.shape.solids):
-            solid_rows.append( { "index" : i,
-                                 "name" : solid.name,
-                                 "maxh" : None if solid.maxh > 1e98 else solid.maxh,
-                                 "visible" : True })
+            solid_rows.append(
+                {
+                    "index": i,
+                    "name": solid.name,
+                    "maxh": None if solid.maxh > 1e98 else solid.maxh,
+                    "visible": True,
+                }
+            )
         self.solid_table.rows = solid_rows
         face_rows = []
         for i, face in enumerate(self.shape.faces):
-            face_rows.append( { "index" : i,
-                                "name" : face.name,
-                                "maxh" : None if face.maxh > 1e98 else face.maxh,
-                                "visible" : True })
+            face_rows.append(
+                {
+                    "index": i,
+                    "name": face.name,
+                    "maxh": None if face.maxh > 1e98 else face.maxh,
+                    "visible": True,
+                }
+            )
         self.face_table.rows = face_rows
         edge_rows = []
         for i, edge in enumerate(self.shape.edges):
-            edge_rows.append( { "index" : i,
-                                "name" : edge.name,
-                                "maxh" : None if edge.maxh > 1e98 else edge.maxh,
-                                "visible" : True })
+            edge_rows.append(
+                {
+                    "index": i,
+                    "name": edge.name,
+                    "maxh": None if edge.maxh > 1e98 else edge.maxh,
+                    "visible": True,
+                }
+            )
         self.edge_table.rows = edge_rows
         self.hidden = False
+
 
 @register_application
 class MeshingModel(App):
@@ -189,10 +236,10 @@ class MeshingModel(App):
         self.geo_upload_layout = self.create_geo_upload_layout()
         self.main_layout = MainLayout()
         save_button = QBtn(
+            QTooltip("Save"),
             fab=True,
             icon="save",
             color="primary",
-            children=QTooltip(children="Save"),
             style="position: absolute; right: 20px; bottom: 20px;",
         ).on_click(self.save)
         self.main_layout.children.append(save_button)
@@ -205,12 +252,15 @@ class MeshingModel(App):
 
     def _update_geometry(self):
         import os
+
         self.name = os.path.splitext(self.geo_upload.filename)[-2]
         print("Set name to ", self.name)
         with self.geo_upload as geofile:
             import netgen.occ as ngocc
-            self.main_layout.build_from_shape(shape=ngocc.OCCGeometry(geofile).shape,
-                                              name=self.name)
+
+            self.main_layout.build_from_shape(
+                shape=ngocc.OCCGeometry(geofile).shape, name=self.name
+            )
         self.geo_upload_layout.hidden = True
 
     def restart(self):
@@ -230,19 +280,20 @@ class MeshingModel(App):
         )
         self.geo_upload.on_file_loaded(self._update_geometry)
         welcome_header = Heading(
-            "Welcome to the Meshing App!",
-            6,
-            style="text-align:center;"
+            "Welcome to the Meshing App!", 6, style="text-align:center;"
         )
         welcome_text = Div(
             "Upload a geometry file to get started. Currently supported geometry formats: step (*.step, *.stp), brep (*.brep)",
             style="text-align:center;",
         )
 
-        return Div(welcome_header,
-                   welcome_text,
-                   Centered(self.geo_upload), classes="fixed-center")
-    
+        return Div(
+            welcome_header,
+            welcome_text,
+            Centered(self.geo_upload),
+            classes="fixed-center",
+        )
+
     def create_main_layout(self):
         self.shapetype_selector = QBtnToggle(
             model_value="Faces", options=["Solids", "Faces", "Edges"]
@@ -257,49 +308,50 @@ class MeshingModel(App):
             clearable=True,
         )
         save_button = QBtn(
+            QTooltip("Save simulation", style="min-width:400px;"),
             flat=True,
             icon="save",
-            children=QTooltip(children="Save simulation", style="min-width:400px;"),
         )
         save_button.on_click(self.save)
         gen_mesh_btn = QBtn(
+            QTooltip("Generate Mesh"),
             icon="mdi-arrow-right-drop-circle-outline",
             flat=True,
-            children=QTooltip(children="Generate Mesh"),
         )
         gen_mesh_btn.on_click(self.run)
-        self.download_mesh_btn = FileDownload(id="download_mesh",
-            icon="download", flat=True, children=QTooltip(children="Download Mesh")
+        self.download_mesh_btn = FileDownload(
+            QTooltip("Download Mesh"),
+            id="download_mesh",
+            icon="download",
+            flat=True,
         )
         restart_btn = QBtn(
+            QTooltip("Go back to upload geometry"),
             icon="mdi-restart",
             flat=True,
-            children=QTooltip(children="Go back to upload geometry"),
         )
         restart_btn.on_click(self.restart)
         footer = QFooter(
+            sim_name,
+            QSpace(),
+            restart_btn,
+            save_button,
+            gen_mesh_btn,
+            download_mesh_btn,
             classes="row text-black bg-grey-3",
-            children=[
-                sim_name,
-                QSpace(),
-                restart_btn,
-                save_button,
-                gen_mesh_btn,
-                download_mesh_btn,
-            ],
         )
 
         self.faces = QList()
         inner = Div(self.faces)
 
         big_device = QCard(
+            inner,
             flat=True,
             classes="q-ma-lg q-pa-lg q-center gt-sm",
-            children=inner,
             bordered=True,
         )
-        small_device = QCard(flat=True, classes="lt-md", children=inner)
-        return MainLayout("HI") #small_device, big_device, footer)
+        small_device = QCard(inner, flat=True, classes="lt-md")
+        return MainLayout("HI")  # small_device, big_device, footer)
 
     def on_webgui_click(self, args):
         if args["did_move"]:
@@ -533,11 +585,7 @@ class ShapeComponent(QItem):
             debounce=200,
             model_value=shape.maxh if shape.maxh < 1e98 else None,
         ).on_update_model_value(self.set_maxh)
-        super().__init__(
-            children=Row(
-                *[QItemSection(children=c) for c in [self.nameParam, self.maxh]]
-            )
-        )
+        super().__init__(Row(*[QItemSection(c) for c in [self.nameParam, self.maxh]]))
         self._shape = shape
 
     def set_name(self, name):
@@ -545,6 +593,7 @@ class ShapeComponent(QItem):
 
     def set_maxh(self, maxh):
         self._shape.maxh = maxh
+
 
 # class ShapeGroup(DynamicGroup):
 #     def __init__(
@@ -620,4 +669,3 @@ class ShapeComponent(QItem):
 #         self.selector.dynamic.labels = labels
 #         self.selector.dynamic.values = values
 #         self.selector.updateFrontend()
-
