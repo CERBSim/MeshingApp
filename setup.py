@@ -24,6 +24,7 @@ setup(
     name=name,
     version=version,
     description="Meshing app for Webapp",
+    dependencies=["netgen"],
     packages=find_packages("."),
     package_data={name: ["*.png"]},
     install_requires=[],
