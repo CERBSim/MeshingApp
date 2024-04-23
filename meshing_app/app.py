@@ -15,6 +15,7 @@ class ShapeTable(QTable):
         super().__init__(row_key="index", flat=True,
                          columns=columns, style="min-width: 450px;height:500px;",
                          virtual_scroll=True,
+                         virtual_scroll_item_size=0,
                          pagination={"rowsPerPage" : 0 },
                          selection="multiple")
         self.on_update_selected(self.update_selected)
@@ -162,19 +163,26 @@ class MainLayout(Div):
             dim = args["value"]["dim"]
             if args["value"]["did_move"]:
                 return
+            if dim == -1:
+                table = self.shapetype_tables[self.shapetype_selector.model_value]
+                table.selected = []
+                table.update_selected(table.selected)
+            table_to_scroll = None
             if dim == 2:
                 index = args["value"]["index"]
                 print("index = ", index)
                 self.shapetype_selector.model_value = "faces"
                 self.face_table.click_row(args["value"] | { "arg" : { "row" : index } })
-                self.face_table.scrollTo()
+                table_to_scroll = self.face_table
             if dim == 1:
                 index = args["value"]["index"]
                 self.shapetype_selector.model_value = "edges"
                 self.edge_table.click_row(args["value"] | { "arg" : { "row" : index } })
-                self.edge_table.scrollTo()
+                table_to_scroll = self.face_table
             self.update_table_visiblity()
             print("click_webgui = ", args)
+            if table_to_scroll is not None:
+                table_to_scroll.scrollTo(index)
 
         self.webgui.on_click(click_webgui)
         webgui_card = QCard(
@@ -285,7 +293,7 @@ class MainLayout(Div):
 
 
 @register_application
-class MeshingModel(App):
+class MeshingApp(App):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.geo = None

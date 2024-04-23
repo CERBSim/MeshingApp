@@ -1,11 +1,11 @@
 from webapp_client import AppConfig, AppAccessConfig
 from .version import __version__
-from .mesher import MeshingModel
+from .app import MeshingApp
 
 config = AppConfig(
     name="Meshing App",
     version=__version__,
-    python_class=MeshingModel,
+    python_class=MeshingApp,
     frontend_pip_dependencies=["netgen"],
     frontend_dependencies=[],
     description="A simple meshing app",
