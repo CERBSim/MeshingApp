@@ -1,54 +1,92 @@
 from webapp_client.app import App, register_application
-from webapp_client.components import Row, Col, Div, FileUpload, Heading, Centered
+from webapp_client.components import *
 from webapp_client.qcomponents import *
 from webapp_client.visualization import WebguiComponent
 from .version import __version__
 
+class ShapeTable(QTable):
+    def __init__(self):
+        columns = [
+            {"name": "index", "label": "Index", "field": "index"},
+            {"name": "name", "label": "Name", "field": "name"},
+            {"name": "maxh", "label": "Maxh", "field": "maxh"},
+            {"name": "visible", "label": "Visible", "field": "visible"},
+        ]
+        super().__init__(row_key="index", flat=True,
+                         columns=columns, style="min-width: 450px;",
+                         virtual_scroll=True,
+                         selection="multiple")
+        self.on_update_selected(self.update_selected)
+        self.shapes = []
+        self.selected = []
+        self.row_components = {}
+        self.slot_body = self.create_row
+        self.last_clicked = None
 
-class FileDownload(QBtn):
-    def __init__(self, *children, id, **kwargs):
-        """A button that downloads a file on click.
+    def update_selected(self, selected):
+        print("update selected = ", selected)
+        # self.selected = selected
+        self.color_rows()
 
-        The file can be set with set_file(filename, file_data=None, file_location=None).
-
-        The file data is stored in the storage of the app and only retrieved when the button is clicked.
-        """
-        super().__init__(*children, id=id, **kwargs)
-        self._filename = None
-        self.disable = True
-        self.on("click", self.download)
-
-    def set_file(self, filename, file_data=None, file_location=None):
-        """Set the file to be downloaded on button click as file with name filename.
-
-        If file_data is set, it is used as file content, otherwise the file is read from file_location. If no file location is given as well, the file is read from the current directory with the given filename.
-        """
-        assert (
-            file_data is None or file_location is None
-        ), "Only file data or file location can be set"
-        self._filename = filename
-        if file_data is not None:
-            self.storage.set("file", file_data)
+    def click_row(self, event):
+        print("click row = ", event)
+        row_index = event["arg"]["row"]
+        if event["ctrlKey"]:
+            sel = self.selected
+            if row_index in self.selected:
+                sel.remove(row_index)
+            else:
+                sel.append(row_index)
+            self.selected = sel
+        elif event["shiftKey"]:
+            if self.last_clicked is not None:
+                start = min(row_index, self.last_clicked)
+                end = max(row_index, self.last_clicked)
+                self.selected = list(range(start, end + 1))
+            else:
+                self.selected = [row_index]
         else:
-            if file_location is None:
-                file_location = filename
-            with open(file_location, "rb") as f:
-                file_data = f.read()
-                self.storage.set("file", file_data)
-        self.disable = False
+            self.selected = [row_index]
+        self.last_clicked = row_index
+        self.color_rows()
 
-    def download(self):
-        if self._filename is not None:
-            result = self.storage.get("file")
-            self.download_file(data=result, filename=self._filename)
+    def color_rows(self):
+        for index, row in self.row_components.items():
+            if index in self.selected:
+                row.style = "background-color: #f0f0f0;"
+            else:
+                row.style = ""
 
-    def dump(self):
-        return self._filename
+    def create_row(self, props):
+        print("create row with props = ", props)
+        row = props["row"]
+        visible_cb = QCheckbox(model_value=row["visible"])
+        name_input = QInput(label="Name", model_value=row.get("name", None))
+        maxh_input = QInput(label="Maxh", model_value=row.get("maxh", None))
+        row_comp = QTr(
+            QTd(),
+            QTd(str(row["index"])),
+            QTd(name_input),
+            QTd(maxh_input),
+            QTd(visible_cb)
+        ).on("click", self.click_row, arg={"row" : row["index"] })
+        self.row_components[row["index"]] = row_comp
+        return [row_comp]
 
-    def load(self, data):
-        self._filename = data
-        self.disable = self._filename == None
-
+    def set_shapes(self, shapes):
+        self.shapes = shapes
+        rows = []
+        for i, shape in enumerate(shapes):
+            rows.append(
+                {
+                    "index": i,
+                    "name": shape.name if shape.name else None,
+                    "maxh": None if shape.maxh > 1e98 else shape.maxh,
+                    "visible": True,
+                }
+            )
+        self.rows = rows
+            
 
 class MainLayout(Div):
     def __init__(self, *args):
@@ -106,32 +144,16 @@ class MainLayout(Div):
             {"name": "maxh", "label": "Maxh", "field": "maxh"},
             {"name": "visible", "label": "Visible", "field": "visible"},
         ]
-        self.solid_table = QTable(
-            row_key="index",
-            flat=True,
-            columns=columns,
-            style="min-width: 450px;",
-        )
+        self.solid_table = ShapeTable()
         self.solid_table.hidden = True
-        self.face_table = QTable(
-            row_key="index",
-            flat=True,
-            columns=columns,
-            selection="multiple",
-            style="min-width: 450px;",
-        )
+        self.face_table = ShapeTable()
 
         def create_body_cell(props):
             return [QTd(QInput(label=props["col"]["label"]))]
 
         self.face_table.slot_body_cell_name("name", create_body_cell)
 
-        self.edge_table = QTable(
-            row_key="index",
-            flat=True,
-            columns=columns,
-            style="min-width: 450px;",
-        )
+        self.edge_table = ShapeTable()
         self.edge_table.hidden = True
         settings = QCard(
             QCardSection(
@@ -148,7 +170,7 @@ class MainLayout(Div):
             fab=True,
             icon="mdi-arrow-right-drop-circle-outline",
             color="primary",
-            style="position: absolute; right: 140px; bottom: 20px;",
+            style="position: fixed; right: 140px; bottom: 20px;",
         ).on_click(self.generate_mesh)
 
         self.download_mesh_button = FileDownload(
@@ -158,7 +180,7 @@ class MainLayout(Div):
             icon="download",
             color="primary",
             disable=True,
-            style="position: absolute; right: 80px; bottom: 20px;",
+            style="position: fixed; right: 80px; bottom: 20px;",
         )
         self.children = [
             Centered(Row(settings, webgui_card)),
@@ -168,13 +190,15 @@ class MainLayout(Div):
 
     def generate_mesh(self):
         import netgen.occ as ngocc
-
         # ngocc.ResetGlobalShapeProperties()
         geo = ngocc.OCCGeometry(self.shape)
         mesh = geo.GenerateMesh()
-        mesh.Save(self.name + ".vol.gz")
-        self.download_mesh_button.set_file(self.name + ".vol.gz")
-        self.mesh_webgui.draw(mesh)
+        # TODO: .vol.gz not working yet?
+        filename = self.name + ".vol"
+        mesh.Save(filename)
+        self.download_mesh_button.set_file(filename,
+                                           file_location=filename)
+        self.mesh_webgui.draw(mesh, store=True)
         self.gui_toggle.model_value = "mesh"
         self.mesh_webgui.hidden = False
         self.webgui.hidden = True
@@ -189,39 +213,9 @@ class MainLayout(Div):
         self.name = name
         self.shape.faces.col = (0.7, 0.7, 0.7)
         self.webgui.draw(self.shape)
-        solid_rows = []
-        for i, solid in enumerate(self.shape.solids):
-            solid_rows.append(
-                {
-                    "index": i,
-                    "name": solid.name,
-                    "maxh": None if solid.maxh > 1e98 else solid.maxh,
-                    "visible": True,
-                }
-            )
-        self.solid_table.rows = solid_rows
-        face_rows = []
-        for i, face in enumerate(self.shape.faces):
-            face_rows.append(
-                {
-                    "index": i,
-                    "name": face.name,
-                    "maxh": None if face.maxh > 1e98 else face.maxh,
-                    "visible": True,
-                }
-            )
-        self.face_table.rows = face_rows
-        edge_rows = []
-        for i, edge in enumerate(self.shape.edges):
-            edge_rows.append(
-                {
-                    "index": i,
-                    "name": edge.name,
-                    "maxh": None if edge.maxh > 1e98 else edge.maxh,
-                    "visible": True,
-                }
-            )
-        self.edge_table.rows = edge_rows
+        self.solid_table.set_shapes(self.shape.solids)
+        self.face_table.set_shapes(self.shape.faces)
+        self.edge_table.set_shapes(self.shape.edges)
         self.hidden = False
 
 
@@ -240,7 +234,7 @@ class MeshingModel(App):
             fab=True,
             icon="save",
             color="primary",
-            style="position: absolute; right: 20px; bottom: 20px;",
+            style="position: fixed; right: 20px; bottom: 20px;",
         ).on_click(self.save)
         self.main_layout.children.append(save_button)
         self.component = Div(self.geo_upload_layout, self.main_layout)
