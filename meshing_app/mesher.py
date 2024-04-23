@@ -5,7 +5,7 @@ from webapp_client.visualization import WebguiComponent
 from .version import __version__
 
 class ShapeTable(QTable):
-    def __init__(self):
+    def __init__(self, geo_webgui, shape_type):
         columns = [
             {"name": "index", "label": "Index", "field": "index"},
             {"name": "name", "label": "Name", "field": "name"},
@@ -13,8 +13,9 @@ class ShapeTable(QTable):
             {"name": "visible", "label": "Visible", "field": "visible"},
         ]
         super().__init__(row_key="index", flat=True,
-                         columns=columns, style="min-width: 450px;",
+                         columns=columns, style="min-width: 450px;height:500px;",
                          virtual_scroll=True,
+                         pagination={"rowsPerPage" : 0 },
                          selection="multiple")
         self.on_update_selected(self.update_selected)
         self.shapes = []
@@ -22,6 +23,8 @@ class ShapeTable(QTable):
         self.row_components = {}
         self.slot_body = self.create_row
         self.last_clicked = None
+        self.geo_webgui = geo_webgui
+        self.shape_type = shape_type
 
     def update_selected(self, selected):
         print("update selected = ", selected)
@@ -56,11 +59,53 @@ class ShapeTable(QTable):
                 row.style = "background-color: #f0f0f0;"
             else:
                 row.style = ""
+        self.update_gui()
+
+    def update_gui(self):
+        if self.shape_type == "solids":
+            self.geo_webgui._webgui_data["edge_colors"] = [(0,0,0,v[3] if len(v) == 4 else 1) for v in self.geo_webgui._webgui_data["edge_colors"]]
+            drawn_faces = set()
+            self.geo_webgui._webgui_data["colors"] = [(0.7,0.7,0.7,1) for _ in self.geo_webgui._webgui_data["colors"]]
+            for index, shape in enumerate(self.shapes):
+                if self.rows[index]["visible"]:
+                    for face in shape.faces:
+                        drawn_faces.add(self.face_index[face])
+                if index in self.selected:
+                    for face in shape.faces:
+                        self.geo_webgui._webgui_data["colors"][self.face_index[face]] = (1, 0, 0, 1)
+            for index in range(len(self.geo_webgui._webgui_data["colors"])):
+                if index not in drawn_faces:
+                    self.geo_webgui._webgui_data["colors"][index] = (1,1,1,0)
+        elif self.shape_type == "faces":
+            self.geo_webgui._webgui_data["edge_colors"] = [(0,0,0,v[3] if len(v) == 4 else 1) for v in self.geo_webgui._webgui_data["edge_colors"]]
+            for index, shape in enumerate(self.shapes):
+                if not self.rows[index]["visible"]:
+                    self.geo_webgui._webgui_data["colors"][index] = (1,1,1,0)
+                    continue
+                if index in self.selected:
+                    self.geo_webgui._webgui_data["colors"][index] = (1, 0, 0, 1)
+                else:
+                    self.geo_webgui._webgui_data["colors"][index] = (0.7,0.7,0.7,1)
+        else:
+            self.geo_webgui._webgui_data["colors"] = [(0.7,0.7,0.7,v[3]) for v in self.geo_webgui._webgui_data["colors"]]
+            for index, shape in enumerate(self.shapes):
+                if not self.rows[index]["visible"]:
+                    self.geo_webgui._webgui_data["edge_colors"][index] = (1,1,1,0)
+                    continue
+                if index in self.selected:
+                    self.geo_webgui._webgui_data["edge_colors"][index] = (1, 0, 0, 1)
+                else:
+                    self.geo_webgui._webgui_data["edge_colors"][index] = (0,0,0,1)
+        self.geo_webgui._update_frontend(method="Redraw",
+                                         data=self.geo_webgui.webgui_data)
 
     def create_row(self, props):
-        print("create row with props = ", props)
         row = props["row"]
-        visible_cb = QCheckbox(model_value=row["visible"])
+        def change_visible(value):
+            self.rows[value["arg"]["row"]]["visible"] = value["value"]
+            self.update_gui()
+        visible_cb = QCheckbox(model_value=row["visible"]
+                               ).on("update:model-value", change_visible, arg={"row" : row["index"]})
         name_input = QInput(label="Name", model_value=row.get("name", None))
         maxh_input = QInput(label="Maxh", model_value=row.get("maxh", None))
         row_comp = QTr(
@@ -73,8 +118,9 @@ class ShapeTable(QTable):
         self.row_components[row["index"]] = row_comp
         return [row_comp]
 
-    def set_shapes(self, shapes):
+    def set_shapes(self, shapes, face_index=None):
         self.shapes = shapes
+        self.face_index = face_index
         rows = []
         for i, shape in enumerate(shapes):
             rows.append(
@@ -113,11 +159,21 @@ class MainLayout(Div):
         ).on_update_model_value(update_gui)
 
         def click_webgui(args):
-            if self.shapetype_selector.model_value == "faces":
-                dim = args["value"]["dim"]
-                if dim == 2:
-                    index = args["value"]["index"]
-                    print("index = ", index)
+            dim = args["value"]["dim"]
+            if args["value"]["did_move"]:
+                return
+            if dim == 2:
+                index = args["value"]["index"]
+                print("index = ", index)
+                self.shapetype_selector.model_value = "faces"
+                self.face_table.click_row(args["value"] | { "arg" : { "row" : index } })
+                self.face_table.scrollTo()
+            if dim == 1:
+                index = args["value"]["index"]
+                self.shapetype_selector.model_value = "edges"
+                self.edge_table.click_row(args["value"] | { "arg" : { "row" : index } })
+                self.edge_table.scrollTo()
+            self.update_table_visiblity()
             print("click_webgui = ", args)
 
         self.webgui.on_click(click_webgui)
@@ -144,17 +200,20 @@ class MainLayout(Div):
             {"name": "maxh", "label": "Maxh", "field": "maxh"},
             {"name": "visible", "label": "Visible", "field": "visible"},
         ]
-        self.solid_table = ShapeTable()
+        self.solid_table = ShapeTable(self.webgui, "solids")
         self.solid_table.hidden = True
-        self.face_table = ShapeTable()
+        self.face_table = ShapeTable(self.webgui, "faces")
 
         def create_body_cell(props):
             return [QTd(QInput(label=props["col"]["label"]))]
 
         self.face_table.slot_body_cell_name("name", create_body_cell)
 
-        self.edge_table = ShapeTable()
+        self.edge_table = ShapeTable(self.webgui, "edges")
         self.edge_table.hidden = True
+        self.shapetype_tables = { "solids" : self.solid_table,
+                                  "faces" : self.face_table,
+                                  "edges" : self.edge_table }
         settings = QCard(
             QCardSection(
                 Centered(self.shapetype_selector),
@@ -204,16 +263,22 @@ class MainLayout(Div):
         self.webgui.hidden = True
 
     def update_table_visiblity(self):
-        self.solid_table.hidden = self.shapetype_selector.model_value != "solids"
-        self.face_table.hidden = self.shapetype_selector.model_value != "faces"
-        self.edge_table.hidden = self.shapetype_selector.model_value != "edges"
+        shape_type = self.shapetype_selector.model_value
+        self.solid_table.hidden = shape_type != "solids"
+        self.face_table.hidden = shape_type != "faces"
+        self.edge_table.hidden = shape_type != "edges"
+        self.shapetype_tables[shape_type].update_gui()
 
     def build_from_shape(self, shape, name):
         self.shape = shape
         self.name = name
+        face_index = {}
+        for i, face in enumerate(self.shape.faces):
+            face_index[face] = i
         self.shape.faces.col = (0.7, 0.7, 0.7)
         self.webgui.draw(self.shape)
-        self.solid_table.set_shapes(self.shape.solids)
+        self.solid_table.set_shapes(self.shape.solids,
+                                    face_index=face_index)
         self.face_table.set_shapes(self.shape.faces)
         self.edge_table.set_shapes(self.shape.edges)
         self.hidden = False
