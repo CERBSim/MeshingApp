@@ -13,16 +13,16 @@ class GlobalMeshingSettings(QCard):
             model_value=2.,
             id="curvature_safety",
             label="Curvature Safety")
-        self.segments_per_edge = QInput(
+        self.segments_per_edge = NumberInput(
             QTooltip(Div("Reduces mesh size, such that each edge is divided at least into this number of segments. Setting to factor less than one sets meshsize to 1/factor * edge length. Set to 0 to disable.", style="max-width:300px;")),
             id="segments_per_edge",
-            label="Segments per Edge", type="number")
-        self.grading = QInput(
-            QTooltip(Div("Factor controlling how quickly elements can become coarser close to refined regions. Between 0 and 1, 1 means no grading, 0 means maximum grading.",
-                         style="max-width:300px;")),
+            label="Segments per Edge")
+        self.grading = NumberInput(
+            QTooltip(Div("Factor controlling how quickly elements can become coarser close to refined regions. Between 0 and 1, 1 means no grading, 0 means maximum grading.", style="max-width:300px;")),
             model_value=0.3,
             id="grading",
-            label="Grading", type="number")
+            label="Grading")
+
         super().__init__(Heading("Global Meshing Settings", 3),
                          Row(self.maxh, self.curvature_safety),
                          Row(self.segments_per_edge, self.grading),
@@ -292,11 +292,16 @@ class MainLayout(Div):
         self.shapetype_tables = { "solids" : self.solid_table,
                                   "faces" : self.face_table,
                                   "edges" : self.edge_table }
+
+        change_name = QInput(label="Name", debounce=500)
+        change_maxh = NumberInput(label="Maxh", debounce=500)
         settings = QCard(
             Centered(self.shapetype_selector),
             self.solid_table,
             self.face_table,
             self.edge_table,
+            Centered(Row(Heading("Change for all selected:", 6, style="margin:20px;"),
+change_name, change_maxh)),
             style="margin:10px;padding:10px;",
         )
 
