@@ -4,6 +4,44 @@ from webapp_client.qcomponents import *
 from webapp_client.visualization import WebguiComponent
 from .version import __version__
 
+class GlobalMeshingSettings(QCard):
+    def __init__(self):
+        self.maxh = QInput(id="maxh", label="Maxh", type="number")
+        self.curvature_safety = NumberInput(
+            QTooltip(Div("Factor reducing mesh size depending on curvature radius of the face, meshsize is approximately curvature radius divided by this factor.",
+                         style="max-width:300px;")),
+            model_value=2.,
+            id="curvature_safety",
+            label="Curvature Safety")
+        self.segments_per_edge = QInput(
+            QTooltip(Div("Reduces mesh size, such that each edge is divided at least into this number of segments. Setting to factor less than one sets meshsize to 1/factor * edge length. Set to 0 to disable.", style="max-width:300px;")),
+            id="segments_per_edge",
+            label="Segments per Edge", type="number")
+        self.grading = QInput(
+            QTooltip(Div("Factor controlling how quickly elements can become coarser close to refined regions. Between 0 and 1, 1 means no grading, 0 means maximum grading.",
+                         style="max-width:300px;")),
+            model_value=0.3,
+            id="grading",
+            label="Grading", type="number")
+        super().__init__(Heading("Global Meshing Settings", 3),
+                         Row(self.maxh, self.curvature_safety),
+                         Row(self.segments_per_edge, self.grading),
+                         id="global_settings",
+                         style="margin:10px;padding:10px;width:100%;",
+                         namespace=True)
+
+    def get_meshing_parameters(self):
+        mp = {}
+        if self.maxh.model_value:
+            mp["maxh"] = float(self.maxh.model_value)
+        if self.curvature_safety.model_value:
+            mp["curvaturesafety"] = float(self.curvature_safety.model_value)
+        if self.segments_per_edge.model_value:
+            mp["segmentsperedge"] = float(self.segments_per_edge.model_value)
+        if self.grading.model_value:
+            mp["grading"] = float(self.grading.model_value)
+        return mp
+
 class ShapeTable(QTable):
     def __init__(self, geo_webgui, shape_type):
         columns = [
@@ -17,6 +55,7 @@ class ShapeTable(QTable):
                          columns=columns, style="min-width: 450px;height:500px;",
                          virtual_scroll=True,
                          virtual_scroll_item_size=0,
+                         title="Shape Settings",
                          pagination={"rowsPerPage" : 0 },
                          selection="multiple")
         self.on_update_selected(self.update_selected)
@@ -118,7 +157,7 @@ class ShapeTable(QTable):
 
     def set_maxh(self, data):
         if data["value"] is None: return
-        self.shapes[data["arg"]["row"]].maxh = float(data["value"])
+        self.shapes[data["arg"]["row"]].maxh = float(data["value"]) if data["value"] != "" else 1e99
         self.rows[data["arg"]["row"]]["maxh"] = data["value"]
 
     def create_row(self, props):
@@ -220,11 +259,13 @@ class MainLayout(Div):
                 table_to_scroll.scrollTo(index)
 
         self.webgui.on_click(click_webgui)
+        self.geo_info = Div(style="padding-left:5px;")
         webgui_card = QCard(
             Centered(self.gui_toggle),
             self.webgui_div,
             self.mesh_webgui_div,
-            style="margin:20px;",
+            self.geo_info,
+            style="margin:10px;",
         )
         self.shapetype_selector = QBtnToggle(
             push=True,
@@ -237,12 +278,6 @@ class MainLayout(Div):
             style="margin-bottom:10px;",
         )
         self.shapetype_selector.on_update_model_value(self.update_table_visiblity)
-        columns = [
-            {"name": "index", "label": "Index", "field": "index"},
-            {"name": "name", "label": "Name", "field": "name"},
-            {"name": "maxh", "label": "Maxh", "field": "maxh"},
-            {"name": "visible", "label": "Visible", "field": "visible"},
-        ]
         self.solid_table = ShapeTable(self.webgui, "solids")
         self.solid_table.hidden = True
         self.face_table = ShapeTable(self.webgui, "faces")
@@ -258,13 +293,11 @@ class MainLayout(Div):
                                   "faces" : self.face_table,
                                   "edges" : self.edge_table }
         settings = QCard(
-            QCardSection(
-                Centered(self.shapetype_selector),
-                self.solid_table,
-                self.face_table,
-                self.edge_table,
-            ),
-            style="margin:20px;padding:20px;",
+            Centered(self.shapetype_selector),
+            self.solid_table,
+            self.face_table,
+            self.edge_table,
+            style="margin:10px;padding:10px;",
         )
 
         generate_mesh_button = QBtn(
@@ -275,6 +308,14 @@ class MainLayout(Div):
             style="position: fixed; right: 140px; bottom: 20px;",
         ).on_click(self.generate_mesh)
 
+        self.back_to_start = QBtn(
+            QTooltip("Restart"),
+            fab=True,
+            icon="mdi-restart",
+            color="primary",
+            style="position: fixed; left: 20px; bottom: 20px;"
+            )
+
         self.download_mesh_button = FileDownload(
             QTooltip("Download Mesh"),
             id="download_mesh",
@@ -284,19 +325,41 @@ class MainLayout(Div):
             disable=True,
             style="position: fixed; right: 80px; bottom: 20px;",
         )
+        self.global_settings = GlobalMeshingSettings()
+        self.loading = QInnerLoading(QSpinnerGears(size="100px",
+                                                   color="primary"),
+                                     Centered("Generating Mesh..."),
+                                     showing=True)
+
+        self.loading.hidden = True
+        self.save_button = QBtn(
+            QTooltip("Save"),
+            fab=True,
+            icon="save",
+            color="primary",
+            style="position: fixed; right: 20px; bottom: 20px;",
+        )
+
         self.children = [
+            Centered(Row(self.global_settings)),
             Centered(Row(settings, webgui_card)),
             generate_mesh_button,
             self.download_mesh_button,
+            self.back_to_start,
+            self.save_button,
+            self.loading,
         ]
 
     def generate_mesh(self):
         import netgen
         import netgen.occ as ngocc
+        self.loading.label = "Generating Mesh..."
+        self.loading.hidden = False
         # ngocc.ResetGlobalShapeProperties()
         geo = ngocc.OCCGeometry(self.shape)
+        mp = self.global_settings.get_meshing_parameters()
         try:
-            mesh = geo.GenerateMesh()
+            mesh = geo.GenerateMesh(**mp)
             # TODO: .vol.gz not working yet?
             filename = self.name + ".vol"
             mesh.Save(filename)
@@ -310,6 +373,7 @@ class MainLayout(Div):
             print("Error in meshing", e)
             self.alert_dialog.children[1] = str(e)
             self.alert_dialog.show()
+        self.loading.hidden = True
 
     def update_table_visiblity(self):
         shape_type = self.shapetype_selector.model_value
@@ -321,6 +385,8 @@ class MainLayout(Div):
     def build_from_shape(self, shape, name):
         self.shape = shape
         self.name = name
+        bb = shape.bounding_box
+        self.geo_info.children = ["Boundingbox: " + f"({bb[0][0]:.2f},{bb[0][1]:.2f},{bb[0][2]:.2f}) - ({bb[1][0]:.2f},{bb[1][1]:.2f},{bb[1][2]:.2f})"]
         face_index = {}
         for i, face in enumerate(self.shape.faces):
             face_index[face] = i
@@ -343,14 +409,8 @@ class MeshingApp(App):
     def create_layout(self):
         self.geo_upload_layout = self.create_geo_upload_layout()
         self.main_layout = MainLayout()
-        save_button = QBtn(
-            QTooltip("Save"),
-            fab=True,
-            icon="save",
-            color="primary",
-            style="position: fixed; right: 20px; bottom: 20px;",
-        ).on_click(self.save)
-        self.main_layout.children.append(save_button)
+        self.main_layout.back_to_start.on_click(self.restart)
+        self.main_layout.save_button.on_click(self.save)
         self.component = Div(self.geo_upload_layout, self.main_layout)
 
     def update(self, *args, **kwargs):
@@ -374,7 +434,6 @@ class MeshingApp(App):
         self.geo_upload.model_value = None
         self.geo_upload_layout.hidden = False
         self.main_layout.hidden = True
-        self.main_layout.shape = None
 
     def create_geo_upload_layout(self):
         self.geo_upload = FileUpload(
