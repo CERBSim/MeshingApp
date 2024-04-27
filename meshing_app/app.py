@@ -4,31 +4,84 @@ from webapp_client.qcomponents import *
 from webapp_client.visualization import WebguiComponent
 from .version import __version__
 
+mesh_options = {
+    "very_coarse": {"curvaturesafety": 1, "segmentsperedge": 0.3, "grading": 0.7},
+    "coarse": {"curvaturesafety": 1.5, "segmentsperedge": 0.5, "grading": 0.5},
+    "moderate": {"curvaturesafety": 2, "segmentsperedge": 1, "grading": 0.3},
+    "fine": {"curvaturesafety": 3, "segmentsperedge": 2, "grading": 0.3},
+    "very_fine": {"curvaturesafety": 5, "segmentsperedge": 3, "grading": 0.1},
+}
+
+
 class GlobalMeshingSettings(QCard):
     def __init__(self):
+        def change_mesh_granularity():
+            mp = mesh_options[self.mesh_granularity.model_value]
+            self.curvature_safety.model_value = mp["curvaturesafety"]
+            self.segments_per_edge.model_value = mp["segmentsperedge"]
+            self.grading.model_value = mp["grading"]
+
+        self.mesh_granularity = QSelect(
+            id="mesh_granularity",
+            model_value="moderate",
+            options=list(mesh_options.keys()),
+            style="padding-left:30px;min-width:200px;",
+        ).on_update_model_value(change_mesh_granularity)
+
         self.maxh = QInput(id="maxh", label="Maxh", type="number")
         self.curvature_safety = NumberInput(
-            QTooltip(Div("Factor reducing mesh size depending on curvature radius of the face, meshsize is approximately curvature radius divided by this factor.",
-                         style="max-width:300px;")),
-            model_value=2.,
+            QTooltip(
+                Div(
+                    "Factor reducing mesh size depending on curvature radius of the face, meshsize is approximately curvature radius divided by this factor.",
+                    style="max-width:300px;",
+                )
+            ),
+            model_value=2.0,
             id="curvature_safety",
-            label="Curvature Safety")
+            label="Curvature Safety",
+        )
         self.segments_per_edge = NumberInput(
-            QTooltip(Div("Reduces mesh size, such that each edge is divided at least into this number of segments. Setting to factor less than one sets meshsize to 1/factor * edge length. Set to 0 to disable.", style="max-width:300px;")),
+            QTooltip(
+                Div(
+                    "Reduces mesh size, such that each edge is divided at least into this number of segments. Setting to factor less than one sets meshsize to 1/factor * edge length. Leave empty to disable.",
+                    style="max-width:300px;",
+                )
+            ),
             id="segments_per_edge",
-            label="Segments per Edge")
-        self.grading = NumberInput(
-            QTooltip(Div("Factor controlling how quickly elements can become coarser close to refined regions. Between 0 and 1, 1 means no grading, 0 means maximum grading.", style="max-width:300px;")),
+            clearable=True,
+            label="Segments per Edge",
+        )
+        self.grading = QSlider(
+            QTooltip(
+                Div(
+                    "Factor controlling how quickly elements can become coarser close to refined regions. Between 0 and 1, 1 means no grading, 0 means maximum grading.",
+                    style="width:300px;",
+                )
+            ),
             model_value=0.3,
+            min=0.01,
+            max=0.99,
+            step=0.01,
             id="grading",
-            label="Grading")
+            label=True,
+        )
 
-        super().__init__(Heading("Global Meshing Settings", 3),
-                         Row(self.maxh, self.curvature_safety),
-                         Row(self.segments_per_edge, self.grading),
-                         id="global_settings",
-                         style="margin:10px;padding:10px;width:100%;",
-                         namespace=True)
+        super().__init__(
+            Row(Heading("Global Meshing Settings", 3), self.mesh_granularity),
+            Row(self.maxh, self.curvature_safety),
+            Row(
+                self.segments_per_edge,
+                Div(
+                    "Grading",
+                    self.grading,
+                    classes="q-field__label",
+                    style="margin-top:10px;width:200px;",
+                ),
+            ),
+            id="global_settings",
+            style="margin:10px;padding:10px;width:100%;",
+            namespace=True,
+        )
 
     def get_meshing_parameters(self):
         mp = {}
@@ -42,6 +95,7 @@ class GlobalMeshingSettings(QCard):
             mp["grading"] = float(self.grading.model_value)
         return mp
 
+
 class ShapeTable(QTable):
     def __init__(self, geo_webgui, shape_type):
         columns = [
@@ -50,14 +104,18 @@ class ShapeTable(QTable):
             {"name": "maxh", "label": "Maxh", "field": "maxh"},
             {"name": "visible", "label": "Visible", "field": "visible"},
         ]
-        super().__init__(id=shape_type,
-                         row_key="index", flat=True,
-                         columns=columns, style="min-width: 450px;height:500px;",
-                         virtual_scroll=True,
-                         virtual_scroll_item_size=0,
-                         title="Shape Settings",
-                         pagination={"rowsPerPage" : 0 },
-                         selection="multiple")
+        super().__init__(
+            id=shape_type,
+            row_key="index",
+            flat=True,
+            columns=columns,
+            style="min-width: 450px;height:500px;",
+            virtual_scroll=True,
+            virtual_scroll_item_size=0,
+            title="Shape Settings",
+            pagination={"rowsPerPage": 0},
+            selection="multiple",
+        )
         self.on_update_selected(self.update_selected)
         self.shapes = []
         self.selected = []
@@ -67,6 +125,9 @@ class ShapeTable(QTable):
         self.geo_webgui = geo_webgui
         self.shape_type = shape_type
         self._loaded_rows = []
+        self.select_row_callback = []
+        self.name_inputs = {}
+        self.maxh_inputs = {}
 
     def update_selected(self, selected):
         pass
@@ -93,6 +154,8 @@ class ShapeTable(QTable):
             self.selected = [row_index]
         self.last_clicked = row_index
         self.color_rows()
+        for cb in self.select_row_callback:
+            cb()
 
     def color_rows(self):
         for index, row in self.row_components.items():
@@ -104,45 +167,57 @@ class ShapeTable(QTable):
 
     def update_gui(self):
         if self.shape_type == "solids":
-            self.geo_webgui._webgui_data["edge_colors"] = [(0,0,0,v[3] if len(v) == 4 else 1) for v in self.geo_webgui._webgui_data["edge_colors"]]
+            self.geo_webgui._webgui_data["edge_colors"] = [
+                (0, 0, 0, v[3] if len(v) == 4 else 1)
+                for v in self.geo_webgui._webgui_data["edge_colors"]
+            ]
             drawn_faces = set()
-            self.geo_webgui._webgui_data["colors"] = [(0.7,0.7,0.7,1) for _ in self.geo_webgui._webgui_data["colors"]]
+            self.geo_webgui._webgui_data["colors"] = [
+                (0.7, 0.7, 0.7, 1) for _ in self.geo_webgui._webgui_data["colors"]
+            ]
             for index, shape in enumerate(self.shapes):
                 if self.rows[index]["visible"]:
                     for face in shape.faces:
                         drawn_faces.add(self.face_index[face])
                 if index in self.selected:
                     for face in shape.faces:
-                        self.geo_webgui._webgui_data["colors"][self.face_index[face]] = (1, 0, 0, 1)
+                        self.geo_webgui._webgui_data["colors"][
+                            self.face_index[face]
+                        ] = (1, 0, 0, 1)
             for index in range(len(self.geo_webgui._webgui_data["colors"])):
                 if index not in drawn_faces:
-                    self.geo_webgui._webgui_data["colors"][index] = (1,1,1,0)
+                    self.geo_webgui._webgui_data["colors"][index] = (1, 1, 1, 0)
         elif self.shape_type == "faces":
-            self.geo_webgui._webgui_data["edge_colors"] = [(0,0,0,v[3] if len(v) == 4 else 1) for v in self.geo_webgui._webgui_data["edge_colors"]]
+            self.geo_webgui._webgui_data["edge_colors"] = [
+                (0, 0, 0, v[3] if len(v) == 4 else 1)
+                for v in self.geo_webgui._webgui_data["edge_colors"]
+            ]
             for index, shape in enumerate(self.shapes):
                 if not self.rows[index]["visible"]:
-                    self.geo_webgui._webgui_data["colors"][index] = (1,1,1,0)
+                    self.geo_webgui._webgui_data["colors"][index] = (1, 1, 1, 0)
                     continue
                 if index in self.selected:
                     self.geo_webgui._webgui_data["colors"][index] = (1, 0, 0, 1)
                 else:
-                    self.geo_webgui._webgui_data["colors"][index] = (0.7,0.7,0.7,1)
+                    self.geo_webgui._webgui_data["colors"][index] = (0.7, 0.7, 0.7, 1)
         else:
-            self.geo_webgui._webgui_data["colors"] = [(0.7,0.7,0.7,v[3]) for v in self.geo_webgui._webgui_data["colors"]]
+            self.geo_webgui._webgui_data["colors"] = [
+                (0.7, 0.7, 0.7, v[3]) for v in self.geo_webgui._webgui_data["colors"]
+            ]
             for index, shape in enumerate(self.shapes):
                 if not self.rows[index]["visible"]:
-                    self.geo_webgui._webgui_data["edge_colors"][index] = (1,1,1,0)
+                    self.geo_webgui._webgui_data["edge_colors"][index] = (1, 1, 1, 0)
                     continue
                 if index in self.selected:
                     self.geo_webgui._webgui_data["edge_colors"][index] = (1, 0, 0, 1)
                 else:
-                    self.geo_webgui._webgui_data["edge_colors"][index] = (0,0,0,1)
-        self.geo_webgui._update_frontend(method="Redraw",
-                                         data=self.geo_webgui.webgui_data)
+                    self.geo_webgui._webgui_data["edge_colors"][index] = (0, 0, 0, 1)
+        self.geo_webgui._update_frontend(
+            method="Redraw", data=self.geo_webgui.webgui_data
+        )
 
     def dump(self):
-        return { "base" : super().dump(),
-                 "rows" : self.rows }
+        return {"base": super().dump(), "rows": self.rows}
 
     def load(self, data):
         if "base" in data and data["base"] is not None:
@@ -151,39 +226,50 @@ class ShapeTable(QTable):
             self._loaded_rows = data["rows"]
 
     def set_name(self, data):
-        if data["value"] is None: return
+        if data["value"] is None:
+            return
         self.shapes[data["arg"]["row"]].name = data["value"]
         self.rows[data["arg"]["row"]]["name"] = data["value"]
+        if "update_inputs" in data and data["update_inputs"]:
+            self.name_inputs[data["arg"]["row"]].model_value = data["value"]
 
     def set_maxh(self, data):
-        if data["value"] is None: return
-        self.shapes[data["arg"]["row"]].maxh = float(data["value"]) if data["value"] != "" else 1e99
+        if data["value"] is None:
+            return
+        print("set maxh", data["value"], type(data["value"]))
+        self.shapes[data["arg"]["row"]].maxh = (
+            float(data["value"]) if data["value"] != "" else 1e99
+        )
         self.rows[data["arg"]["row"]]["maxh"] = data["value"]
+        if "update_inputs" in data and data["update_inputs"]:
+            self.maxh_inputs[data["arg"]["row"]].model_value = data["value"]
 
     def create_row(self, props):
         row = props["row"]
+
         def change_visible(value):
             self.rows[value["arg"]["row"]]["visible"] = value["value"]
             self.update_gui()
-        visible_cb = QCheckbox(model_value=row["visible"]
-                               ).on_update_model_value(change_visible,
-                                                       arg={"row" : row["index"]})
-        name_input = QInput(label="Name",
-                            debounce=500,
-                            model_value=row.get("name", None)
-                            ).on_update_model_value(self.set_name,
-                                                    arg={"row" : row["index"]})
-        maxh_input = QInput(label="Maxh", model_value=row.get("maxh", None),
-                            type="number"
-                            ).on_update_model_value(self.set_maxh,
-                                                    arg={"row" : row["index"]})
+
+        visible_cb = QCheckbox(model_value=row["visible"]).on_update_model_value(
+            change_visible, arg={"row": row["index"]}
+        )
+        name_input = QInput(
+            label="Name", debounce=500, model_value=row.get("name", None)
+        ).on_update_model_value(self.set_name, arg={"row": row["index"]})
+        maxh_input = NumberInput(
+            label="Maxh",
+            model_value=row.get("maxh", None),
+        ).on_update_model_value(self.set_maxh, arg={"row": row["index"]})
+        self.name_inputs[row["index"]] = name_input
+        self.maxh_inputs[row["index"]] = maxh_input
         row_comp = QTr(
             QTd(),
             QTd(str(row["index"])),
             QTd(name_input),
             QTd(maxh_input),
-            QTd(visible_cb)
-        ).on("click", self.click_row, arg={"row" : row["index"] })
+            QTd(visible_cb),
+        ).on("click", self.click_row, arg={"row": row["index"]})
         self.row_components[row["index"]] = row_comp
         return [row_comp]
 
@@ -204,9 +290,9 @@ class ShapeTable(QTable):
         if self._loaded_rows:
             for i, r in enumerate(self._loaded_rows):
                 # use the callback structure
-                self.set_name({ "value" : r["name"], "arg" : { "row" : i } })
-                self.set_maxh({ "value" : r["maxh"], "arg" : { "row" : i } })
-            
+                self.set_name({"value": r["name"], "arg": {"row": i}})
+                self.set_maxh({"value": r["maxh"], "arg": {"row": i}})
+
 
 class MainLayout(Div):
     def __init__(self, *args):
@@ -247,12 +333,12 @@ class MainLayout(Div):
             if dim == 2:
                 index = args["value"]["index"]
                 self.shapetype_selector.model_value = "faces"
-                self.face_table.click_row(args["value"] | { "arg" : { "row" : index } })
+                self.face_table.click_row(args["value"] | {"arg": {"row": index}})
                 table_to_scroll = self.face_table
             if dim == 1:
                 index = args["value"]["index"]
                 self.shapetype_selector.model_value = "edges"
-                self.edge_table.click_row(args["value"] | { "arg" : { "row" : index } })
+                self.edge_table.click_row(args["value"] | {"arg": {"row": index}})
                 table_to_scroll = self.face_table
             self.update_table_visiblity()
             if table_to_scroll is not None:
@@ -289,19 +375,56 @@ class MainLayout(Div):
 
         self.edge_table = ShapeTable(self.webgui, "edges")
         self.edge_table.hidden = True
-        self.shapetype_tables = { "solids" : self.solid_table,
-                                  "faces" : self.face_table,
-                                  "edges" : self.edge_table }
+        self.shapetype_tables = {
+            "solids": self.solid_table,
+            "faces": self.face_table,
+            "edges": self.edge_table,
+        }
 
-        change_name = QInput(label="Name", debounce=500)
-        change_maxh = NumberInput(label="Maxh", debounce=500)
+        def set_selected_name():
+            name = self.change_name.model_value
+            table = self.shapetype_tables[self.shapetype_selector.model_value]
+            for index in table.selected:
+                table.set_name(
+                    {"value": name, "arg": {"row": index}, "update_inputs": True}
+                )
+            table.rows = table.rows  # trigger update
+            table.update_gui()
+
+        def set_selected_maxh():
+            maxh = self.change_maxh.model_value
+            table = self.shapetype_tables[self.shapetype_selector.model_value]
+            for index in table.selected:
+                table.set_maxh(
+                    {"value": maxh, "arg": {"row": index}, "update_inputs": True}
+                )
+            table.update_gui()
+
+        def reset_change_for_all():
+            self.change_name.model_value = None
+            self.change_maxh.model_value = None
+
+        self.change_name = QInput(label="Name", debounce=500).on_update_model_value(
+            set_selected_name
+        )
+        self.change_maxh = NumberInput(
+            label="Maxh", debounce=500
+        ).on_update_model_value(set_selected_maxh)
+        for table in self.shapetype_tables.values():
+            table.select_row_callback.append(reset_change_for_all)
+
         settings = QCard(
             Centered(self.shapetype_selector),
             self.solid_table,
             self.face_table,
             self.edge_table,
-            Centered(Row(Heading("Change for all selected:", 6, style="margin:20px;"),
-change_name, change_maxh)),
+            Centered(
+                Row(
+                    Heading("Change for all selected:", 6, style="margin:20px;"),
+                    self.change_name,
+                    self.change_maxh,
+                )
+            ),
             style="margin:10px;padding:10px;",
         )
 
@@ -318,8 +441,8 @@ change_name, change_maxh)),
             fab=True,
             icon="mdi-restart",
             color="primary",
-            style="position: fixed; left: 20px; bottom: 20px;"
-            )
+            style="position: fixed; left: 20px; bottom: 20px;",
+        )
 
         self.download_mesh_button = FileDownload(
             QTooltip("Download Mesh"),
@@ -331,10 +454,11 @@ change_name, change_maxh)),
             style="position: fixed; right: 80px; bottom: 20px;",
         )
         self.global_settings = GlobalMeshingSettings()
-        self.loading = QInnerLoading(QSpinnerGears(size="100px",
-                                                   color="primary"),
-                                     Centered("Generating Mesh..."),
-                                     showing=True)
+        self.loading = QInnerLoading(
+            QSpinnerGears(size="100px", color="primary"),
+            Centered("Generating Mesh..."),
+            showing=True,
+        )
 
         self.loading.hidden = True
         self.save_button = QBtn(
@@ -358,6 +482,7 @@ change_name, change_maxh)),
     def generate_mesh(self):
         import netgen
         import netgen.occ as ngocc
+
         self.loading.label = "Generating Mesh..."
         self.loading.hidden = False
         # ngocc.ResetGlobalShapeProperties()
@@ -368,8 +493,7 @@ change_name, change_maxh)),
             # TODO: .vol.gz not working yet?
             filename = self.name + ".vol"
             mesh.Save(filename)
-            self.download_mesh_button.set_file(filename,
-                                               file_location=filename)
+            self.download_mesh_button.set_file(filename, file_location=filename)
             self.gui_toggle.model_value = "mesh"
             self.webgui_div.hidden = True
             self.mesh_webgui_div.hidden = False
@@ -391,14 +515,16 @@ change_name, change_maxh)),
         self.shape = shape
         self.name = name
         bb = shape.bounding_box
-        self.geo_info.children = ["Boundingbox: " + f"({bb[0][0]:.2f},{bb[0][1]:.2f},{bb[0][2]:.2f}) - ({bb[1][0]:.2f},{bb[1][1]:.2f},{bb[1][2]:.2f})"]
+        self.geo_info.children = [
+            "Boundingbox: "
+            + f"({bb[0][0]:.2f},{bb[0][1]:.2f},{bb[0][2]:.2f}) - ({bb[1][0]:.2f},{bb[1][1]:.2f},{bb[1][2]:.2f})"
+        ]
         face_index = {}
         for i, face in enumerate(self.shape.faces):
             face_index[face] = i
         self.shape.faces.col = (0.7, 0.7, 0.7)
         self.webgui.draw(self.shape)
-        self.solid_table.set_shapes(self.shape.solids,
-                                    face_index=face_index)
+        self.solid_table.set_shapes(self.shape.solids, face_index=face_index)
         self.face_table.set_shapes(self.shape.faces)
         self.edge_table.set_shapes(self.shape.edges)
         self.hidden = False
