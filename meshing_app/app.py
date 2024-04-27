@@ -127,7 +127,10 @@ class ShapeTable(QTable):
             columns=columns,
             style="min-width: 450px;height:500px;",
             virtual_scroll=True,
-            virtual_scroll_item_size=0,
+            virtual_scroll_sticky_size_start="48",
+            # virtual_scroll_item_size=48,
+            hide_bottom=True,
+            hide_pagination=True,
             title="Shape Settings",
             pagination={"rowsPerPage": 0},
             selection="multiple",
@@ -136,11 +139,14 @@ class ShapeTable(QTable):
         self.selected = []
         self.row_components = {}
         self.slot_body = self.create_row
-        self.slot_header_selection = [QBtn("Select All", flat=True).on_click(self.select_all)]
+        self.slot_header = [QTr(QTh("Index"), QTh("Name"), QTh("Maxh"), QTh("Visible"), style="position:sticky;top:0;z-index:1;background-color:white;")]
+        self.slot_top_right = [QBtn("Select All", flat=True).on_click(self.select_all)]
         self.last_clicked = None
         self.geo_webgui = geo_webgui
         self.shape_type = shape_type
         self._loaded_rows = []
+        self.selection_text = Div("0 selected entries: []")
+        self.slot_bottom = [self.selection_text]
         self.select_row_callback = []
         self.name_inputs = {}
         self.maxh_inputs = {}
@@ -174,6 +180,8 @@ class ShapeTable(QTable):
             cb()
 
     def color_rows(self):
+        self.hide_bottom = len(self.selected) == 0
+        self.selection_text.children = [str(len(self.selected)) + " selected entries: " + str(self.selected)]
         for index, row in self.row_components.items():
             if index in self.selected:
                 row.style = "background-color: #f0f0f0;"
@@ -282,7 +290,6 @@ class ShapeTable(QTable):
         self.maxh_inputs[row["index"]] = maxh_input
         self.visible_cbs[row["index"]] = visible_cb
         row_comp = QTr(
-            QTd(),
             QTd(str(row["index"])),
             QTd(name_input),
             QTd(maxh_input),
@@ -353,16 +360,18 @@ class MainLayout(Div):
             if dim == 2:
                 index = args["value"]["index"]
                 self.shapetype_selector.model_value = "faces"
+                self.update_table_visiblity()
+                print("scoll to", index)
+                self.face_table.scrollTo(index)
                 self.face_table.click_row(args["value"] | {"arg": {"row": index}})
-                table_to_scroll = self.face_table
             if dim == 1:
                 index = args["value"]["index"]
                 self.shapetype_selector.model_value = "edges"
+                self.update_table_visiblity()
+                print("scoll to", index)
+                import webapp_frontend
+                self.edge_table._js_callbacks["scrollTo"](index=index)
                 self.edge_table.click_row(args["value"] | {"arg": {"row": index}})
-                table_to_scroll = self.face_table
-            self.update_table_visiblity()
-            if table_to_scroll is not None:
-                table_to_scroll.scrollTo(index)
 
         self.webgui.on_click(click_webgui)
         self.geo_info = Div(style="padding-left:5px;")
