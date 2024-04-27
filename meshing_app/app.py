@@ -1,8 +1,10 @@
-from webapp_client.app import App, register_application
+from webapp_client.app import App, register_application, current_model
 from webapp_client.components import *
 from webapp_client.qcomponents import *
 from webapp_client.visualization import WebguiComponent
 from .version import __version__
+import webapp_client.api as api
+import datetime
 
 mesh_options = {
     "very_coarse": {"curvaturesafety": 1, "segmentsperedge": 0.3, "grading": 0.7},
@@ -11,6 +13,91 @@ mesh_options = {
     "fine": {"curvaturesafety": 3, "segmentsperedge": 2, "grading": 0.3},
     "very_fine": {"curvaturesafety": 5, "segmentsperedge": 3, "grading": 0.1},
 }
+
+
+class SimulationTable(QTable):
+    def __init__(self, dialog):
+        super().__init__(
+            title="Load Geometry",
+            virtual_scroll=True,
+            virtual_scroll_sticky_size_start="48",
+            hide_pagination=True,
+            pagination={"rowsPerPage": 0},
+            columns=[
+                {"name": "index", "label": "Index", "field": "index"},
+                {"name": "id", "label": "ID", "field": "id"},
+                {"name": "name", "label": "Name", "field": "name"},
+                {"name": "created", "label": "Created", "field": "created"},
+                {"name": "modified", "label": "Modified", "field": "modified"},
+            ],
+            visible_columns=["name", "created", "modified"],
+            style="padding:20px;min-width:700px;",
+        )
+        self.slot_header = [
+            QTr(
+                QTh("Name"),
+                QTh("Created"),
+                QTh("Modified"),
+                QTh("Actions"),
+                style="position:sticky;top:0;z-index:1;background-color:white;",
+            )
+        ]
+        self.slot_body = self.create_row
+        self.dialog = dialog
+
+    def load_simulation(self, event):
+        file_id = event["arg"]["file_id"]
+        res = api.get(f"/model/{file_id}")
+        import webapp_frontend
+
+        webapp_frontend.set_file_id(file_id)
+        self.dialog.app.load(data=res["data"], metadata=res["metadata"])
+        self.dialog.hide()
+
+    def delete_simulation(self, event):
+        file_id = event["arg"]["file_id"]
+        api.delete(f"/files/{file_id}")
+        # TODO: can we somehow prevent propagation of on click here to row?
+        self.rows = [r for r in self.rows if r["id"] != file_id]
+
+    def create_row(self, props):
+        row = props["row"]
+        created = datetime.datetime.fromtimestamp(row["created"]).strftime(
+            "%Y-%m-%d %H:%M:%S"
+        )
+        modified = datetime.datetime.fromtimestamp(row["modified"]).strftime(
+            "%Y-%m-%d %H:%M:%S"
+        )
+        delete_btn = QBtn(icon="delete", color="negative", flat=True)
+        delete_btn.on_click(self.delete_simulation, arg={"file_id": row["id"]})
+        # TODO: If we can prevent onclick propagation on delete btn we can
+        # set this on click on the whole row.
+        name, create, modified = QTd(row["name"]), QTd(created), QTd(modified)
+        for c in [name, create, modified]:
+            c.on("click", self.load_simulation, arg={"file_id": row["id"]})
+        row_comp = QTr(name, create, modified, QTd(delete_btn))
+        return [row_comp]
+
+
+class LoadDialog(QDialog):
+    def __init__(self, *args, app, **kwargs):
+        self.app = app
+        self.simulations = SimulationTable(dialog=self)
+        card = self.simulations
+        super().__init__(card, *args, **kwargs)
+
+    def show(self):
+        super().show()
+        res = api.get("/simulations")
+        sims = [
+            s
+            for s in res
+            if s["app_id"] == self.app.metadata["app_id"] and not s["deleted"]
+        ]
+        for i, s in enumerate(sims):
+            s["index"] = i
+        self.simulations.rows = sims
+        print("have simulations = ", res)
 
 
 class GlobalMeshingSettings(QCard):
@@ -128,7 +215,6 @@ class ShapeTable(QTable):
             style="min-width: 450px;height:500px;",
             virtual_scroll=True,
             virtual_scroll_sticky_size_start="48",
-            # virtual_scroll_item_size=48,
             hide_bottom=True,
             hide_pagination=True,
             title="Shape Settings",
@@ -139,7 +225,15 @@ class ShapeTable(QTable):
         self.selected = []
         self.row_components = {}
         self.slot_body = self.create_row
-        self.slot_header = [QTr(QTh("Index"), QTh("Name"), QTh("Maxh"), QTh("Visible"), style="position:sticky;top:0;z-index:1;background-color:white;")]
+        self.slot_header = [
+            QTr(
+                QTh("Index"),
+                QTh("Name"),
+                QTh("Maxh"),
+                QTh("Visible"),
+                style="position:sticky;top:0;z-index:1;background-color:white;",
+            )
+        ]
         self.slot_top_right = [QBtn("Select All", flat=True).on_click(self.select_all)]
         self.last_clicked = None
         self.geo_webgui = geo_webgui
@@ -181,7 +275,9 @@ class ShapeTable(QTable):
 
     def color_rows(self):
         self.hide_bottom = len(self.selected) == 0
-        self.selection_text.children = [str(len(self.selected)) + " selected entries: " + str(self.selected)]
+        self.selection_text.children = [
+            str(len(self.selected)) + " selected entries: " + str(self.selected)
+        ]
         for index, row in self.row_components.items():
             if index in self.selected:
                 row.style = "background-color: #f0f0f0;"
@@ -256,7 +352,11 @@ class ShapeTable(QTable):
             self.name_inputs[data["arg"]["row"]].model_value = data["value"]
 
     def set_maxh(self, data):
-        maxh = 1e99 if (data["value"] is None or data["value"] == "") else float(data["value"])
+        maxh = (
+            1e99
+            if (data["value"] is None or data["value"] == "")
+            else float(data["value"])
+        )
         self.shapes[data["arg"]["row"]].maxh = maxh
         self.rows[data["arg"]["row"]]["maxh"] = maxh
         if "update_inputs" in data and data["update_inputs"]:
@@ -368,6 +468,7 @@ class MainLayout(Div):
                 self.update_table_visiblity()
                 print("scoll to", index)
                 import webapp_frontend
+
                 self.edge_table._js_callbacks["scrollTo"](index=index)
                 self.edge_table.click_row(args["value"] | {"arg": {"row": index}})
 
@@ -432,14 +533,14 @@ class MainLayout(Div):
             table = self.shapetype_tables[self.shapetype_selector.model_value]
             for index in table.selected:
                 table.set_visible(
-                    {"value" : visible, "arg" : { "row":index}, "update_inputs" : True})
+                    {"value": visible, "arg": {"row": index}, "update_inputs": True}
+                )
 
         def reset_change_for_all():
             self.change_name.model_value = None
             self.change_maxh.model_value = None
 
-        self.change_name = QInput(
-            label="Name", debounce=500).on_update_model_value(
+        self.change_name = QInput(label="Name", debounce=500).on_update_model_value(
             set_selected_name
         )
         self.change_maxh = NumberInput(
@@ -448,8 +549,9 @@ class MainLayout(Div):
         for table in self.shapetype_tables.values():
             table.select_row_callback.append(reset_change_for_all)
 
-        self.change_visiblity = QCheckbox(toggle_order="f",
-            label="Visible").on_update_model_value(set_selected_visible)
+        self.change_visiblity = QCheckbox(
+            toggle_order="f", label="Visible"
+        ).on_update_model_value(set_selected_visible)
 
         settings = QCard(
             Centered(self.shapetype_selector),
@@ -461,7 +563,7 @@ class MainLayout(Div):
                     Heading("Change for all selected:", 6, style="margin:20px;"),
                     self.change_name,
                     self.change_maxh,
-                    self.change_visiblity
+                    self.change_visiblity,
                 )
             ),
             style="margin:10px;padding:10px;",
@@ -569,7 +671,6 @@ class MainLayout(Div):
         self.hidden = False
 
 
-@register_application
 class MeshingApp(App):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -601,7 +702,9 @@ class MeshingApp(App):
         self.geo_upload_layout.hidden = True
 
     def restart(self):
+        self.metadata.pop("id")
         self.geo_upload.model_value = None
+        self.geo_upload.filename = None
         self.geo_upload_layout.hidden = False
         self.main_layout.hidden = True
 
@@ -619,14 +722,23 @@ class MeshingApp(App):
             "Welcome to the Meshing App!", 6, style="text-align:center;"
         )
         welcome_text = Div(
-            "Upload a geometry file to get started. Currently supported geometry formats: step (*.step, *.stp), brep (*.brep)",
+            "a saved case, or upload a geometry file to get started. Currently supported geometry formats: step (*.step, *.stp), brep (*.brep).",
             style="text-align:center;",
+        )
+
+        self.load_dialog = LoadDialog(app=self)
+
+        load_saved_btn = QBtn("Load", push=True, size="xl",
+                              color="secondary", style="margin-bottom:10px;margin-top:20px;").on_click(
+            self.load_dialog.show,
         )
 
         return Div(
             welcome_header,
+            Centered(load_saved_btn),
             welcome_text,
             Centered(self.geo_upload),
+            self.load_dialog,
             classes="fixed-center",
         )
 
