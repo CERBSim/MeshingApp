@@ -144,6 +144,7 @@ class ShapeTable(QTable):
         self.select_row_callback = []
         self.name_inputs = {}
         self.maxh_inputs = {}
+        self.visible_cbs = {}
 
     def select_all(self):
         self.selected = list(range(len(self.rows)))
@@ -251,7 +252,6 @@ class ShapeTable(QTable):
     def set_maxh(self, data):
         if data["value"] is None:
             return
-        print("set maxh", data["value"], type(data["value"]))
         self.shapes[data["arg"]["row"]].maxh = (
             float(data["value"]) if data["value"] != "" else 1e99
         )
@@ -259,15 +259,17 @@ class ShapeTable(QTable):
         if "update_inputs" in data and data["update_inputs"]:
             self.maxh_inputs[data["arg"]["row"]].model_value = data["value"]
 
+    def set_visible(self, data):
+        self.rows[data["arg"]["row"]]["visible"] = data["value"]
+        if "update_inputs" in data and data["update_inputs"]:
+            self.visible_cbs[data["arg"]["row"]].model_value = data["value"]
+        self.update_gui()
+
     def create_row(self, props):
         row = props["row"]
 
-        def change_visible(value):
-            self.rows[value["arg"]["row"]]["visible"] = value["value"]
-            self.update_gui()
-
         visible_cb = QCheckbox(model_value=row["visible"]).on_update_model_value(
-            change_visible, arg={"row": row["index"]}
+            self.set_visible, arg={"row": row["index"]}
         )
         name_input = QInput(
             label="Name", debounce=500, model_value=row.get("name", None)
@@ -278,6 +280,7 @@ class ShapeTable(QTable):
         ).on_update_model_value(self.set_maxh, arg={"row": row["index"]})
         self.name_inputs[row["index"]] = name_input
         self.maxh_inputs[row["index"]] = maxh_input
+        self.visible_cbs[row["index"]] = visible_cb
         row_comp = QTr(
             QTd(),
             QTd(str(row["index"])),
@@ -417,6 +420,13 @@ class MainLayout(Div):
                 )
             table.update_gui()
 
+        def set_selected_visible():
+            visible = self.change_visiblity.model_value
+            table = self.shapetype_tables[self.shapetype_selector.model_value]
+            for index in table.selected:
+                table.set_visible(
+                    {"value" : visible, "arg" : { "row":index}, "update_inputs" : True})
+
         def reset_change_for_all():
             self.change_name.model_value = None
             self.change_maxh.model_value = None
@@ -430,6 +440,9 @@ class MainLayout(Div):
         for table in self.shapetype_tables.values():
             table.select_row_callback.append(reset_change_for_all)
 
+        self.change_visiblity = QCheckbox(toggle_order="f",
+            label="Visible").on_update_model_value(set_selected_visible)
+
         settings = QCard(
             Centered(self.shapetype_selector),
             self.solid_table,
@@ -440,6 +453,7 @@ class MainLayout(Div):
                     Heading("Change for all selected:", 6, style="margin:20px;"),
                     self.change_name,
                     self.change_maxh,
+                    self.change_visiblity
                 )
             ),
             style="margin:10px;padding:10px;",
