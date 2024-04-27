@@ -250,20 +250,15 @@ class ShapeTable(QTable):
             self._loaded_rows = data["rows"]
 
     def set_name(self, data):
-        if data["value"] is None:
-            return
         self.shapes[data["arg"]["row"]].name = data["value"]
         self.rows[data["arg"]["row"]]["name"] = data["value"]
         if "update_inputs" in data and data["update_inputs"]:
             self.name_inputs[data["arg"]["row"]].model_value = data["value"]
 
     def set_maxh(self, data):
-        if data["value"] is None:
-            return
-        self.shapes[data["arg"]["row"]].maxh = (
-            float(data["value"]) if data["value"] != "" else 1e99
-        )
-        self.rows[data["arg"]["row"]]["maxh"] = data["value"]
+        maxh = 1e99 if (data["value"] is None or data["value"] == "") else float(data["value"])
+        self.shapes[data["arg"]["row"]].maxh = maxh
+        self.rows[data["arg"]["row"]]["maxh"] = maxh
         if "update_inputs" in data and data["update_inputs"]:
             self.maxh_inputs[data["arg"]["row"]].model_value = data["value"]
 
@@ -282,9 +277,12 @@ class ShapeTable(QTable):
         name_input = QInput(
             label="Name", debounce=500, model_value=row.get("name", None)
         ).on_update_model_value(self.set_name, arg={"row": row["index"]})
+        maxh_val = row.get("maxh", None)
+        if maxh_val is not None and maxh_val > 1e98:
+            maxh_val = None
         maxh_input = NumberInput(
             label="Maxh",
-            model_value=row.get("maxh", None),
+            model_value=maxh_val,
         ).on_update_model_value(self.set_maxh, arg={"row": row["index"]})
         self.name_inputs[row["index"]] = name_input
         self.maxh_inputs[row["index"]] = maxh_input
@@ -440,7 +438,8 @@ class MainLayout(Div):
             self.change_name.model_value = None
             self.change_maxh.model_value = None
 
-        self.change_name = QInput(label="Name", debounce=500).on_update_model_value(
+        self.change_name = QInput(
+            label="Name", debounce=500).on_update_model_value(
             set_selected_name
         )
         self.change_maxh = NumberInput(
