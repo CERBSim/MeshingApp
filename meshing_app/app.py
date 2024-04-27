@@ -22,13 +22,29 @@ class GlobalMeshingSettings(QCard):
             self.grading.model_value = mp["grading"]
 
         self.mesh_granularity = QSelect(
+            QTooltip(
+                Div(
+                    "Predefined meshing settings. Selection changes global settings.",
+                    style="max-width:300px;",
+                )
+            ),
             id="mesh_granularity",
             model_value="moderate",
             options=list(mesh_options.keys()),
             style="padding-left:30px;min-width:200px;",
         ).on_update_model_value(change_mesh_granularity)
 
-        self.maxh = QInput(id="maxh", label="Maxh", type="number")
+        self.maxh = QInput(
+            QTooltip(
+                Div(
+                    "Maximum mesh size. Not strictly enforced (if mesh quality would suffer too much).",
+                    style="max-width:300px;",
+                )
+            ),
+            id="maxh",
+            label="Maxh",
+            type="number",
+        )
         self.curvature_safety = NumberInput(
             QTooltip(
                 Div(
@@ -52,12 +68,6 @@ class GlobalMeshingSettings(QCard):
             label="Segments per Edge",
         )
         self.grading = QSlider(
-            QTooltip(
-                Div(
-                    "Factor controlling how quickly elements can become coarser close to refined regions. Between 0 and 1, 1 means no grading, 0 means maximum grading.",
-                    style="width:300px;",
-                )
-            ),
             model_value=0.3,
             min=0.01,
             max=0.99,
@@ -73,6 +83,12 @@ class GlobalMeshingSettings(QCard):
                 self.segments_per_edge,
                 Div(
                     "Grading",
+                    QTooltip(
+                        Div(
+                            "Factor controlling how quickly elements can become coarser close to refined regions. Between 0 and 1, 1 means no grading, 0 means maximum grading.",
+                            style="width:300px;",
+                        )
+                    ),
                     self.grading,
                     classes="q-field__label",
                     style="margin-top:10px;width:200px;",
@@ -116,11 +132,11 @@ class ShapeTable(QTable):
             pagination={"rowsPerPage": 0},
             selection="multiple",
         )
-        self.on_update_selected(self.update_selected)
         self.shapes = []
         self.selected = []
         self.row_components = {}
         self.slot_body = self.create_row
+        self.slot_header_selection = [QBtn("Select All", flat=True).on_click(self.select_all)]
         self.last_clicked = None
         self.geo_webgui = geo_webgui
         self.shape_type = shape_type
@@ -129,10 +145,9 @@ class ShapeTable(QTable):
         self.name_inputs = {}
         self.maxh_inputs = {}
 
-    def update_selected(self, selected):
-        pass
-        # self.selected = selected
-        # self.color_rows()
+    def select_all(self):
+        self.selected = list(range(len(self.rows)))
+        self.color_rows()
 
     def click_row(self, event):
         row_index = event["arg"]["row"]
@@ -328,7 +343,9 @@ class MainLayout(Div):
             if dim == -1:
                 table = self.shapetype_tables[self.shapetype_selector.model_value]
                 table.selected = []
-                table.update_selected(table.selected)
+                table.color_rows()
+                return
+                # table.update_selected(table.selected)
             table_to_scroll = None
             if dim == 2:
                 index = args["value"]["index"]
