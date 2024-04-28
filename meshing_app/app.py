@@ -454,7 +454,6 @@ class MainLayout(Div):
                 table.color_rows()
                 return
                 # table.update_selected(table.selected)
-            table_to_scroll = None
             if dim == 2:
                 index = args["value"]["index"]
                 self.shapetype_selector.model_value = "faces"
@@ -599,6 +598,7 @@ class MainLayout(Div):
             QSpinnerGears(size="100px", color="primary"),
             Centered("Generating Mesh..."),
             showing=True,
+            style="z-index:100;"
         )
 
         self.loading.hidden = True
@@ -722,7 +722,8 @@ class MeshingApp(App):
             "Welcome to the Meshing App!", 6, style="text-align:center;"
         )
         welcome_text = Div(
-            "a saved case, or upload a geometry file to get started. Currently supported geometry formats: step (*.step, *.stp), brep (*.brep).",
+            Div("a saved case, or upload a geometry file to get started."),
+            Div("Currently supported geometry formats: step (*.step, *.stp), brep (*.brep)."),
             style="text-align:center;",
         )
 
