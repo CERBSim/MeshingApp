@@ -97,8 +97,6 @@ class LoadDialog(QDialog):
         for i, s in enumerate(sims):
             s["index"] = i
         self.simulations.rows = sims
-        print("have simulations = ", res)
-
 
 class GlobalMeshingSettings(QCard):
     def __init__(self):
@@ -458,17 +456,13 @@ class MainLayout(Div):
                 index = args["value"]["index"]
                 self.shapetype_selector.model_value = "faces"
                 self.update_table_visiblity()
-                print("scoll to", index)
-                self.face_table.scrollTo(index)
+                self.edge_table.scrollTo(index)
                 self.face_table.click_row(args["value"] | {"arg": {"row": index}})
             if dim == 1:
                 index = args["value"]["index"]
                 self.shapetype_selector.model_value = "edges"
                 self.update_table_visiblity()
-                print("scoll to", index)
-                import webapp_frontend
-
-                self.edge_table._js_callbacks["scrollTo"](index=index)
+                self.edge_table.scrollTo(index)
                 self.edge_table.click_row(args["value"] | {"arg": {"row": index}})
 
         self.webgui.on_click(click_webgui)
@@ -549,7 +543,8 @@ class MainLayout(Div):
             table.select_row_callback.append(reset_change_for_all)
 
         self.change_visiblity = QCheckbox(
-            toggle_order="f", label="Visible"
+            label="Visible",
+            model_value=True,
         ).on_update_model_value(set_selected_visible)
 
         settings = QCard(
@@ -702,7 +697,8 @@ class MeshingApp(App):
         self.geo_upload_layout.hidden = True
 
     def restart(self):
-        self.metadata.pop("id")
+        if "id" in self.metadata:
+            self.metadata.pop("id")
         self.geo_upload.model_value = None
         self.geo_upload.filename = None
         self.geo_upload_layout.hidden = False
