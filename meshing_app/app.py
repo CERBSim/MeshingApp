@@ -243,6 +243,8 @@ class ShapeTable(QTable):
         self.name_inputs = {}
         self.maxh_inputs = {}
         self.visible_cbs = {}
+        self.faces = {}
+        self.edges = {}
 
     def select_all(self):
         self.selected = list(range(len(self.rows)))
@@ -284,6 +286,15 @@ class ShapeTable(QTable):
         self.update_gui()
 
     def update_gui(self):
+        faces = {
+            i: (0.7, 0.7, 0.7, 0)
+            for i in range(len(self.geo_webgui._webgui_data["colors"]))
+        }
+        edges = {
+            i: (0, 0, 0, 0)
+            for i in range(len(self.geo_webgui._webgui_data["edge_colors"]))
+        }
+
         if self.shape_type == "solids":
             self.geo_webgui._webgui_data["edge_colors"] = [
                 (0, 0, 0, v[3] if len(v) == 4 else 1)
@@ -330,9 +341,34 @@ class ShapeTable(QTable):
                     self.geo_webgui._webgui_data["edge_colors"][index] = (1, 0, 0, 1)
                 else:
                     self.geo_webgui._webgui_data["edge_colors"][index] = (0, 0, 0, 1)
-        self.geo_webgui._update_frontend(
-            method="Redraw", data=self.geo_webgui.webgui_data
-        )
+
+        if self.faces == {}:
+            self.faces = {
+                i: color
+                for i, color in enumerate(self.geo_webgui._webgui_data["colors"])
+            }
+        if self.edges == {}:
+            self.edges = {
+                i: color
+                for i, color in enumerate(self.geo_webgui._webgui_data["edge_colors"])
+            }
+
+        faces.update(self.faces)
+        edges.update(self.edges)
+
+        def diff_dicts(dict1, webgui_data):
+            dict2 = {i: data for i, data in enumerate(webgui_data)}
+            return {
+                key: value
+                for key, value in dict2.items()
+                if key not in dict1 or dict1[key] != value
+            }
+
+        if diff := diff_dicts(faces, self.geo_webgui._webgui_data["colors"]):
+            self.faces = diff
+        if diff := diff_dicts(edges, self.geo_webgui._webgui_data["edge_colors"]):
+            self.edges = diff
+        self.geo_webgui.set_color(faces=self.faces, edges=self.edges)
 
     def dump(self):
         return {"base": super().dump(), "rows": self.rows}
