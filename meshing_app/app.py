@@ -504,7 +504,7 @@ class MainLayout(Div):
                 index = args["value"]["index"]
                 self.shapetype_selector.model_value = "faces"
                 self.update_table_visiblity()
-                self.edge_table.scrollTo(index)
+                self.face_table.scrollTo(index)
                 self.face_table.click_row(args["value"] | {"arg": {"row": index}})
             if dim == 1:
                 index = args["value"]["index"]
