@@ -465,6 +465,18 @@ class MainLayout(Div):
         self.mesh_webgui_div.hidden = True
 
         def update_gui():
+            def mesh_to_geo(args):
+                camera_settings = self.mesh_webgui._settings["camera"]
+                self.webgui.set_camera(camera_settings)
+
+            def geo_to_mesh(args):
+                camera_settings = self.webgui._settings["camera"]
+                self.mesh_webgui.set_camera(camera_settings)
+
+            if self.gui_toggle.model_value == "geo":
+                self.mesh_webgui.update_camera_settings(mesh_to_geo)
+            else:
+                self.webgui.update_camera_settings(geo_to_mesh)
             self.webgui_div.hidden = self.gui_toggle.model_value != "geo"
             self.mesh_webgui_div.hidden = self.gui_toggle.model_value != "mesh"
 
