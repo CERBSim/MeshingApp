@@ -286,15 +286,6 @@ class ShapeTable(QTable):
         self.update_gui()
 
     def update_gui(self):
-        faces = {
-            i: (0.7, 0.7, 0.7, 0)
-            for i in range(len(self.geo_webgui._webgui_data["colors"]))
-        }
-        edges = {
-            i: (0, 0, 0, 0)
-            for i in range(len(self.geo_webgui._webgui_data["edge_colors"]))
-        }
-
         if self.shape_type == "solids":
             self.geo_webgui._webgui_data["edge_colors"] = [
                 (0, 0, 0, v[3] if len(v) == 4 else 1)
@@ -353,20 +344,31 @@ class ShapeTable(QTable):
                 for i, color in enumerate(self.geo_webgui._webgui_data["edge_colors"])
             }
 
+        faces = {
+            i: (0.7, 0.7, 0.7, 1)
+            for i in range(len(self.geo_webgui._webgui_data["colors"]))
+        }
+        edges = {
+            i: (0, 0, 0, 1)
+            for i in range(len(self.geo_webgui._webgui_data["edge_colors"]))
+        }
         faces.update(self.faces)
         edges.update(self.edges)
 
-        def diff_dicts(dict1, webgui_data):
+        def diff_dicts(dict1, webgui_data, type="faces"):
+            target_value = (0.7, 0.7, 0.7, 1) if type == "faces" else (0, 0, 0, 1)
             dict2 = {i: data for i, data in enumerate(webgui_data)}
             return {
                 key: value
                 for key, value in dict2.items()
-                if key not in dict1 or dict1[key] != value
+                if dict1[key] != value or dict1[key] != target_value
             }
 
-        if diff := diff_dicts(faces, self.geo_webgui._webgui_data["colors"]):
+        if diff := diff_dicts(faces, self.geo_webgui._webgui_data["colors"], "faces"):
             self.faces = diff
-        if diff := diff_dicts(edges, self.geo_webgui._webgui_data["edge_colors"]):
+        if diff := diff_dicts(
+            edges, self.geo_webgui._webgui_data["edge_colors"], "edges"
+        ):
             self.edges = diff
         self.geo_webgui.set_color(faces=self.faces, edges=self.edges)
 
