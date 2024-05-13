@@ -1,6 +1,7 @@
 from webapp_client.app import App, register_application, current_model
 from webapp_client.components import *
 from webapp_client.qcomponents import *
+from webapp_client.utils import temp_dir_with_files
 from webapp_client.visualization import WebguiComponent
 from .version import __version__
 import webapp_client.api as api
@@ -738,11 +739,14 @@ class MeshingApp(App):
         import os
 
         self.name = os.path.splitext(self.geo_upload.filename)[-2]
-        with self.geo_upload as geofile:
+        with temp_dir_with_files(self.geo_upload.get_files_with_data()) as (
+            file_paths,
+            file_names,
+        ):
             import netgen.occ as ngocc
 
             self.main_layout.build_from_shape(
-                shape=ngocc.OCCGeometry(geofile).shape, name=self.name
+                shape=ngocc.OCCGeometry(file_paths[0]).shape, name=self.name
             )
         self.geo_upload_layout.hidden = True
 
