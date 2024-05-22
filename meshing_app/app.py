@@ -1,6 +1,7 @@
 from webapp_client.app import App, register_application, current_model
 from webapp_client.components import *
 from webapp_client.qcomponents import *
+from webapp_client.utils import temp_dir_with_files
 from webapp_client.visualization import WebguiComponent
 from .version import __version__
 import webapp_client.api as api
@@ -243,6 +244,8 @@ class ShapeTable(QTable):
         self.name_inputs = {}
         self.maxh_inputs = {}
         self.visible_cbs = {}
+        self.faces = {}
+        self.edges = {}
 
     def select_all(self):
         self.selected = list(range(len(self.rows)))
@@ -330,9 +333,45 @@ class ShapeTable(QTable):
                     self.geo_webgui._webgui_data["edge_colors"][index] = (1, 0, 0, 1)
                 else:
                     self.geo_webgui._webgui_data["edge_colors"][index] = (0, 0, 0, 1)
-        self.geo_webgui._update_frontend(
-            method="Redraw", data=self.geo_webgui.webgui_data
-        )
+
+        if self.faces == {}:
+            self.faces = {
+                i: color
+                for i, color in enumerate(self.geo_webgui._webgui_data["colors"])
+            }
+        if self.edges == {}:
+            self.edges = {
+                i: color
+                for i, color in enumerate(self.geo_webgui._webgui_data["edge_colors"])
+            }
+
+        faces = {
+            i: (0.7, 0.7, 0.7, 1)
+            for i in range(len(self.geo_webgui._webgui_data["colors"]))
+        }
+        edges = {
+            i: (0, 0, 0, 1)
+            for i in range(len(self.geo_webgui._webgui_data["edge_colors"]))
+        }
+        faces.update(self.faces)
+        edges.update(self.edges)
+
+        def diff_dicts(dict1, webgui_data, type="faces"):
+            target_value = (0.7, 0.7, 0.7, 1) if type == "faces" else (0, 0, 0, 1)
+            dict2 = {i: data for i, data in enumerate(webgui_data)}
+            return {
+                key: value
+                for key, value in dict2.items()
+                if dict1[key] != value or dict1[key] != target_value
+            }
+
+        if diff := diff_dicts(faces, self.geo_webgui._webgui_data["colors"], "faces"):
+            self.faces = diff
+        if diff := diff_dicts(
+            edges, self.geo_webgui._webgui_data["edge_colors"], "edges"
+        ):
+            self.edges = diff
+        self.geo_webgui.set_color(faces=self.faces, edges=self.edges)
 
     def dump(self):
         return {"base": super().dump(), "rows": self.rows}
@@ -429,6 +468,18 @@ class MainLayout(Div):
         self.mesh_webgui_div.hidden = True
 
         def update_gui():
+            def mesh_to_geo(args):
+                camera_settings = self.mesh_webgui._settings["camera"]
+                self.webgui.set_camera(camera_settings)
+
+            def geo_to_mesh(args):
+                camera_settings = self.webgui._settings["camera"]
+                self.mesh_webgui.set_camera(camera_settings)
+
+            if self.gui_toggle.model_value == "geo":
+                self.mesh_webgui.update_camera_settings(mesh_to_geo)
+            else:
+                self.webgui.update_camera_settings(geo_to_mesh)
             self.webgui_div.hidden = self.gui_toggle.model_value != "geo"
             self.mesh_webgui_div.hidden = self.gui_toggle.model_value != "mesh"
 
@@ -456,7 +507,7 @@ class MainLayout(Div):
                 index = args["value"]["index"]
                 self.shapetype_selector.model_value = "faces"
                 self.update_table_visiblity()
-                self.edge_table.scrollTo(index)
+                self.face_table.scrollTo(index)
                 self.face_table.click_row(args["value"] | {"arg": {"row": index}})
             if dim == 1:
                 index = args["value"]["index"]
@@ -688,11 +739,14 @@ class MeshingApp(App):
         import os
 
         self.name = os.path.splitext(self.geo_upload.filename)[-2]
-        with self.geo_upload as geofile:
+        with temp_dir_with_files(self.geo_upload.get_files_with_data()) as (
+            file_paths,
+            file_names,
+        ):
             import netgen.occ as ngocc
 
             self.main_layout.build_from_shape(
-                shape=ngocc.OCCGeometry(geofile).shape, name=self.name
+                shape=ngocc.OCCGeometry(file_paths[0]).shape, name=self.name
             )
         self.geo_upload_layout.hidden = True
 
