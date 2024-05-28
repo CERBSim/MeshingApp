@@ -233,7 +233,14 @@ class ShapeTable(QTable):
                 style="position:sticky;top:0;z-index:1;background-color:white;",
             )
         ]
-        self.slot_top_right = [QBtn("Select All", flat=True).on_click(self.select_all)]
+        self.search_input = QInput(
+            name="Search", dense=True, debounce=500
+        ).on_update_model_value(self.search)
+        self.search_input.slot_append = [QIcon(name="search")]
+        self.slot_top_right = [
+            self.search_input,
+            QBtn("Select All", flat=True).on_click(self.select_all),
+        ]
         self.last_clicked = None
         self.geo_webgui = geo_webgui
         self.shape_type = shape_type
@@ -246,6 +253,20 @@ class ShapeTable(QTable):
         self.visible_cbs = {}
         self.faces = {}
         self.edges = {}
+
+    def search(self, event):
+        if event["value"] == "":
+            self.rows = self.all_rows
+
+        else:
+            self.rows = [
+                row
+                for row in self.all_rows
+                if (
+                    row["name"] is not None
+                    and event["value"].lower() in row["name"].lower()
+                )
+            ]
 
     def select_all(self):
         self.selected = list(range(len(self.rows)))
@@ -447,6 +468,7 @@ class ShapeTable(QTable):
                 }
             )
         self.rows = rows
+        self.all_rows = rows
         if self._loaded_rows:
             for i, r in enumerate(self._loaded_rows):
                 # use the callback structure
