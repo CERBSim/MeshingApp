@@ -763,6 +763,7 @@ class MeshingApp(App):
             self.main_layout.build_from_shape(
                 shape=ngocc.OCCGeometry(str(geo_file)).shape, name=self.name
             )
+        self.geo_uploading.hidden = True
         self.geo_upload_layout.hidden = True
 
     def restart(self):
@@ -782,6 +783,9 @@ class MeshingApp(App):
             error_title="Error in Geometry Upload",
             error_message="Please upload a valid geometry file",
         )
+        def set_loading():
+            self.geo_uploading.hidden = False
+        self.geo_upload.on_update_model_value(set_loading)
         self.geo_upload.on_file_loaded(self._update_geometry)
         welcome_header = Heading(
             "Welcome to the Meshing App!", 6, style="text-align:center;"
@@ -799,8 +803,8 @@ class MeshingApp(App):
             self.load_dialog.show,
         )
 
-        self.loading = QInnerLoading(QSpinnerGears(size="100px", color="primary"), Centered("Loading..."), showing=True)
-        self.loading.hidden = True
+        self.geo_uploading = QInnerLoading(QSpinnerHourglass(size="100px", color="primary"), Centered("Loading..."), showing=True)
+        self.geo_uploading.hidden = True
 
         return Div(
             welcome_header,
@@ -808,7 +812,7 @@ class MeshingApp(App):
             welcome_text,
             Centered(self.geo_upload),
             self.load_dialog,
-            self.loading,
+            self.geo_uploading,
             classes="fixed-center",
         )
 
