@@ -20,10 +20,7 @@ class SimulationTable(QTable):
     def __init__(self, dialog):
         super().__init__(
             title="Load Geometry",
-            virtual_scroll=True,
-            virtual_scroll_sticky_size_start="48",
-            hide_pagination=True,
-            pagination={"rowsPerPage": 0},
+            pagination={"rowsPerPage": 5},
             columns=[
                 {"name": "index", "label": "Index", "field": "index"},
                 {"name": "id", "label": "ID", "field": "id"},
@@ -212,11 +209,9 @@ class ShapeTable(QTable):
             row_key="index",
             flat=True,
             columns=columns,
-            style="min-width: 450px;height:500px;",
-            hide_bottom=False,
-            hide_pagination=False,
+            style="min-width: 450px;height:650px;",
             title="Shape Settings",
-            pagination={"rowsPerPage": 0},
+            pagination={"rowsPerPage": 6 },
             selection="multiple",
         )
         self.shapes = []
@@ -244,8 +239,6 @@ class ShapeTable(QTable):
         self.geo_webgui = geo_webgui
         self.shape_type = shape_type
         self._loaded_rows = []
-        self.selection_text = Div("0 selected entries: []")
-        self.slot_bottom = [self.selection_text]
         self.select_row_callback = []
         self.name_inputs = {}
         self.maxh_inputs = {}
@@ -273,14 +266,14 @@ class ShapeTable(QTable):
 
     def click_row(self, event):
         row_index = event["arg"]["row"]
-        if event["ctrlKey"]:
+        if "ctrlKey" in event and event["ctrlKey"]:
             sel = self.selected
             if row_index in self.selected:
                 sel.remove(row_index)
             else:
                 sel.append(row_index)
             self.selected = sel
-        elif event["shiftKey"]:
+        elif "shiftKey" in event and event["shiftKey"]:
             if self.last_clicked is not None:
                 start = min(row_index, self.last_clicked)
                 end = max(row_index, self.last_clicked)
@@ -296,9 +289,6 @@ class ShapeTable(QTable):
 
     def color_rows(self):
         self.hide_bottom = len(self.selected) == 0
-        self.selection_text.children = [
-            str(len(self.selected)) + " selected entries: " + str(self.selected)
-        ]
         for index, row in self.row_components.items():
             if index in self.selected:
                 row.style = "background-color: #f0f0f0;"
@@ -483,8 +473,10 @@ class MainLayout(Div):
         self.hidden = True
         # Webgui needs to be wrapped in div so that hide/show works properly?
         self.webgui = WebguiComponent(id="webgui_geo")
+        self.webgui.style = "min-width:500px;height:700px"
         self.webgui_div = Div(self.webgui)
         self.mesh_webgui = WebguiComponent(id="webgui_mesh")
+        self.mesh_webgui.style = "min-width:500px;height:700px"
         self.mesh_webgui_div = Div(self.mesh_webgui)
         self.mesh_webgui_div.hidden = True
 
@@ -528,13 +520,19 @@ class MainLayout(Div):
                 index = args["value"]["index"]
                 self.shapetype_selector.model_value = "faces"
                 self.update_table_visiblity()
-                self.face_table.scrollTo(index)
+                # TODO: Find a good way to go to the correct page
+                self.face_table.firstPage()
+                for _ in range(index//self.face_table.pagination["rowsPerPage"]):
+                    self.face_table.nextPage()
                 self.face_table.click_row(args["value"] | {"arg": {"row": index}})
             if dim == 1:
                 index = args["value"]["index"]
                 self.shapetype_selector.model_value = "edges"
                 self.update_table_visiblity()
-                self.edge_table.scrollTo(index)
+                # TODO: Find a good way to go to the correct page
+                self.edge_table.firstPage()
+                for _ in range(index//self.edge_table.pagination["rowsPerPage"]):
+                    self.edge_table.nextPage()
                 self.edge_table.click_row(args["value"] | {"arg": {"row": index}})
 
         self.webgui.on_click(click_webgui)
