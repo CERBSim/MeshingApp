@@ -47,13 +47,15 @@ class SimulationTable(QTable):
         self.dialog = dialog
 
     def load_simulation(self, event):
+        self.dialog.hide()
+        self.dialog.app.loading.hidden = False
         file_id = event["arg"]["file_id"]
         res = api.get(f"/model/{file_id}")
         import webapp_frontend
 
         webapp_frontend.set_file_id(file_id)
         self.dialog.app.load(data=res["data"], metadata=res["metadata"])
-        self.dialog.hide()
+        self.dialog.app.loading.hidden = True
 
     def delete_simulation(self, event):
         file_id = event["arg"]["file_id"]
@@ -163,9 +165,9 @@ class GlobalMeshingSettings(QCard):
         )
 
         super().__init__(
-            Row(Heading("Global Meshing Settings", 3), self.mesh_granularity),
-            Row(self.maxh, self.curvature_safety),
-            Row(
+            Heading("Global Meshing Settings", 3),
+            self.mesh_granularity,
+            self.maxh, self.curvature_safety,
                 self.segments_per_edge,
                 Div(
                     "Grading",
@@ -179,9 +181,8 @@ class GlobalMeshingSettings(QCard):
                     classes="q-field__label",
                     style="margin-top:10px;width:200px;",
                 ),
-            ),
             id="global_settings",
-            style="margin:10px;padding:10px;width:100%;",
+            style="margin:10px;padding:30px;",
             namespace=True,
         )
 
@@ -212,10 +213,8 @@ class ShapeTable(QTable):
             flat=True,
             columns=columns,
             style="min-width: 450px;height:500px;",
-            virtual_scroll=True,
-            virtual_scroll_sticky_size_start="48",
-            hide_bottom=True,
-            hide_pagination=True,
+            hide_bottom=False,
+            hide_pagination=False,
             title="Shape Settings",
             pagination={"rowsPerPage": 0},
             selection="multiple",
@@ -545,7 +544,7 @@ class MainLayout(Div):
             self.webgui_div,
             self.mesh_webgui_div,
             self.geo_info,
-            style="margin:10px;",
+            style="margin:10px; fit;width:800px;height:800px;",
         )
         self.shapetype_selector = QBtnToggle(
             push=True,
@@ -625,13 +624,11 @@ class MainLayout(Div):
             self.solid_table,
             self.face_table,
             self.edge_table,
-            Centered(
-                Row(
-                    Heading("Change for all selected:", 6, style="margin:20px;"),
-                    self.change_name,
-                    self.change_maxh,
-                    self.change_visiblity,
-                )
+            Row(
+                Heading("Change selected:", 6, style="margin:20px"),
+                self.change_name,
+                self.change_maxh,
+                self.change_visiblity,
             ),
             style="margin:10px;padding:10px;",
         )
@@ -678,9 +675,12 @@ class MainLayout(Div):
             style="position: fixed; right: 20px; bottom: 20px;",
         )
 
+        table_and_gui = QSplitter(model_value=40)
+        table_and_gui.slot_before = [settings]
+        table_and_gui.slot_after = [Row(webgui_card,self.global_settings)]
+
         self.children = [
-            Centered(Row(self.global_settings)),
-            Centered(Row(settings, webgui_card)),
+            table_and_gui,
             generate_mesh_button,
             self.download_mesh_button,
             self.back_to_start,
@@ -759,16 +759,11 @@ class MeshingApp(App):
 
     def _update_geometry(self):
         import os
-
         self.name = os.path.splitext(self.geo_upload.filename)[-2]
-        with temp_dir_with_files(self.geo_upload.get_files_with_data()) as (
-            file_paths,
-            file_names,
-        ):
+        with self.geo_upload.as_temporary_file as geo_file:
             import netgen.occ as ngocc
-
             self.main_layout.build_from_shape(
-                shape=ngocc.OCCGeometry(file_paths[0]).shape, name=self.name
+                shape=ngocc.OCCGeometry(str(geo_file)).shape, name=self.name
             )
         self.geo_upload_layout.hidden = True
 
@@ -806,12 +801,16 @@ class MeshingApp(App):
             self.load_dialog.show,
         )
 
+        self.loading = QInnerLoading(QSpinnerGears(size="100px", color="primary"), Centered("Loading..."), showing=True)
+        self.loading.hidden = True
+
         return Div(
             welcome_header,
             Centered(load_saved_btn),
             welcome_text,
             Centered(self.geo_upload),
             self.load_dialog,
+            self.loading,
             classes="fixed-center",
         )
 
