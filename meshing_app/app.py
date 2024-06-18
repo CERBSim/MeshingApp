@@ -689,6 +689,7 @@ class MainLayout(Div):
     def generate_mesh(self):
         import netgen
         import netgen.occ as ngocc
+        self.mesh = None
 
         self.loading.label = "Generating Mesh..."
         self.loading.hidden = False
@@ -700,6 +701,7 @@ class MainLayout(Div):
             # TODO: .vol.gz not working yet?
             filename = self.name + ".vol"
             mesh.Save(filename)
+            self.mesh = mesh
             self.download_mesh_button.set_file(filename, file_location=filename)
             self.gui_toggle.model_value = "mesh"
             self.webgui_div.hidden = True
