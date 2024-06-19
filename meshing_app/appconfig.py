@@ -1,4 +1,4 @@
-from webapp_client import AppConfig, AppAccessConfig
+from webapp_client import AppConfig, AppAccessConfig, AccessLevel
 from .version import __version__
 from .app import MeshingApp
 from webapp_client.utils import load_image
@@ -14,5 +14,5 @@ config = AppConfig(
         os.path.dirname(__file__),"assets/app_image.png")),
     description="Create a mesh from a STEP geometry file. Assign boundary conditions and mesh size interactively. Download the mesh in Netgen format.",
     compute_environments=[],
-    access=AppAccessConfig(),
+    access=AppAccessConfig(default_level = AccessLevel.STANDARD),
 )
