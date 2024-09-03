@@ -45,14 +45,16 @@ class SimulationTable(QTable):
 
     def load_simulation(self, event):
         self.dialog.hide()
-        self.dialog.app.loading.hidden = False
+        print("show loading")
+        self.dialog.app.geo_uploading.hidden = False
         file_id = event["arg"]["file_id"]
         res = api.get(f"/model/{file_id}")
         import webapp_frontend
 
         webapp_frontend.set_file_id(file_id)
         self.dialog.app.load(data=res["data"], metadata=res["metadata"])
-        self.dialog.app.loading.hidden = True
+        print("hide loading")
+        self.dialog.app.geo_uploading.hidden = True
 
     def delete_simulation(self, event):
         file_id = event["arg"]["file_id"]
@@ -105,6 +107,13 @@ class GlobalMeshingSettings(QCard):
             self.curvature_safety.model_value = mp["curvaturesafety"]
             self.segments_per_edge.model_value = mp["segmentsperedge"]
             self.grading.model_value = mp["grading"]
+
+        self.mesh_dimension = QBtnToggle(
+            options=[{ "label" : "2D Mesh", "value" : 2},
+                     { "label" : "3D Mesh", "value" : 3}],
+            model_value = 3,
+            rounded = True,
+            glossy = True)
 
         self.mesh_granularity = QSelect(
             QTooltip(
@@ -163,6 +172,7 @@ class GlobalMeshingSettings(QCard):
 
         super().__init__(
             Heading("Global Meshing Settings", 3),
+            self.mesh_dimension,
             self.mesh_granularity,
             self.maxh, self.curvature_safety,
                 self.segments_per_edge,
@@ -542,7 +552,7 @@ class MainLayout(Div):
             self.webgui_div,
             self.mesh_webgui_div,
             self.geo_info,
-            style="margin:10px; fit;width:800px;height:800px;",
+            style="margin:10px; fit;width:700px;height:800px;",
         )
         self.shapetype_selector = QBtnToggle(
             push=True,
@@ -694,7 +704,8 @@ class MainLayout(Div):
         self.loading.label = "Generating Mesh..."
         self.loading.hidden = False
         # ngocc.ResetGlobalShapeProperties()
-        geo = ngocc.OCCGeometry(self.shape)
+        geo = ngocc.OCCGeometry(self.shape,
+                                dim=self.global_settings.mesh_dimension.model_value)
         mp = self.global_settings.get_meshing_parameters()
         try:
             mesh = geo.GenerateMesh(**mp)
@@ -728,11 +739,30 @@ class MainLayout(Div):
             "Boundingbox: "
             + f"({bb[0][0]:.2f},{bb[0][1]:.2f},{bb[0][2]:.2f}) - ({bb[1][0]:.2f},{bb[1][1]:.2f},{bb[1][2]:.2f})"
         ]
+        size = sum((bb[1][i] - bb[0][i])**2 for i in range(3))**0.5
         face_index = {}
         for i, face in enumerate(self.shape.faces):
             face_index[face] = i
         self.shape.faces.col = (0.7, 0.7, 0.7)
         self.webgui.draw(self.shape)
+        if len(self.shape.solids) == 0:
+            self.shapetype_selector.options = [
+                {"label": "Faces", "value": "faces"},
+                {"label": "Edges", "value": "edges"},
+            ]
+            if not any([abs(v.p[2]) > size * 1e-10 for v in self.shape.vertices]):
+                self.global_settings.mesh_dimension.model_value = 2
+                self.global_settings.mesh_dimension.disable = False
+            else:
+                self.global_settings.mesh_dimension.disable = True
+        else:
+            self.global_settings.mesh_dimension.model_value = 3
+            self.global_settings.mesh_dimension.disable = True
+            self.shapetype_selector.options = [
+                {"label": "Solids", "value": "solids"},
+                {"label": "Faces", "value": "faces"},
+                {"label": "Edges", "value": "edges"},
+            ]
         self.solid_table.set_shapes(self.shape.solids, face_index=face_index)
         self.face_table.set_shapes(self.shape.faces)
         self.edge_table.set_shapes(self.shape.edges)
@@ -768,6 +798,10 @@ class MeshingApp(App):
         self.geo_uploading.hidden = True
         self.geo_upload_layout.hidden = True
 
+    def load(self, *args, **kwargs):
+        super().load(*args, **kwargs)
+
+
     def restart(self):
         if "id" in self.metadata:
             self.metadata.pop("id")
@@ -778,7 +812,6 @@ class MeshingApp(App):
 
     def create_geo_upload_layout(self):
         self.geo_upload = FileUpload(
-            self,
             id="geo_file",
             label="Upload geometry",
             accept="step,stp,brep",
