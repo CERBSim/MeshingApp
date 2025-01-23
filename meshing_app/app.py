@@ -44,9 +44,9 @@ class SimulationTable(QTable):
         self.dialog = dialog
 
     def load_simulation(self, event):
-        self.dialog.hide()
+        self.dialog.ui_hide()
         print("show loading")
-        self.dialog.app.geo_uploading.hidden = False
+        self.dialog.app.geo_uploading.ui_hidden = False
         file_id = event["arg"]["file_id"]
         res = api.get(f"/model/{file_id}")
         import webapp_frontend
@@ -54,13 +54,13 @@ class SimulationTable(QTable):
         webapp_frontend.set_file_id(file_id)
         self.dialog.app.load(data=res["data"], metadata=res["metadata"])
         print("hide loading")
-        self.dialog.app.geo_uploading.hidden = True
+        self.dialog.app.geo_uploading.ui_hidden = True
 
     def delete_simulation(self, event):
         file_id = event["arg"]["file_id"]
         api.delete(f"/files/{file_id}")
         # TODO: can we somehow prevent propagation of on click here to row?
-        self.rows = [r for r in self.rows if r["id"] != file_id]
+        self.ui_rows = [r for r in self.ui_rows if r["id"] != file_id]
 
     def create_row(self, props):
         row = props["row"]
@@ -89,7 +89,7 @@ class LoadDialog(QDialog):
         super().__init__(card, *args, **kwargs)
 
     def show(self):
-        super().show()
+        super().ui_show()
         res = api.get("/simulations")
         sims = [
             s
@@ -98,7 +98,7 @@ class LoadDialog(QDialog):
         ]
         for i, s in enumerate(sims):
             s["index"] = i
-        self.simulations.rows = sims
+        self.simulations.ui_rows = sims
 
 class GlobalMeshingSettings(QCard):
     def __init__(self):
@@ -228,7 +228,7 @@ class ShapeTable(QTable):
         self.selected = []
         self.row_components = {}
         self.ui_slot_body = self.create_row
-        self.slot_header = [
+        self.ui_slot_header = [
             QTr(
                 QTh("Index"),
                 QTh("Name"),
@@ -241,7 +241,7 @@ class ShapeTable(QTable):
             ui_name="Search", ui_dense=True, ui_debounce=500
         ).on_update_model_value(self.search)
         self.search_input.ui_slot_append = [QIcon(ui_name="search")]
-        self.slot_top_right = [
+        self.ui_slot_top_right = [
             self.search_input,
             QBtn("Select All", ui_flat=True).on_click(self.select_all),
         ]
@@ -258,10 +258,10 @@ class ShapeTable(QTable):
 
     def search(self, event):
         if event["value"] == "":
-            self.rows = self.all_rows
+            self.ui_rows = self.all_rows
 
         else:
-            self.rows = [
+            self.ui_rows = [
                 row
                 for row in self.all_rows
                 if (
@@ -271,7 +271,7 @@ class ShapeTable(QTable):
             ]
 
     def select_all(self):
-        self.selected = list(range(len(self.rows)))
+        self.selected = list(range(len(self.ui_rows)))
         self.color_rows()
 
     def click_row(self, event):
@@ -317,7 +317,7 @@ class ShapeTable(QTable):
                 (0.7, 0.7, 0.7, 1) for _ in self.geo_webgui._webgui_data["colors"]
             ]
             for index, shape in enumerate(self.shapes):
-                if self.rows[index]["visible"]:
+                if self.ui_rows[index]["visible"]:
                     for face in shape.faces:
                         drawn_faces.add(self.face_index[face])
                 if index in self.selected:
@@ -334,7 +334,7 @@ class ShapeTable(QTable):
                 for v in self.geo_webgui._webgui_data["edge_colors"]
             ]
             for index, shape in enumerate(self.shapes):
-                if not self.rows[index]["visible"]:
+                if not self.ui_rows[index]["visible"]:
                     self.geo_webgui._webgui_data["colors"][index] = (1, 1, 1, 0)
                     continue
                 if index in self.selected:
@@ -346,7 +346,7 @@ class ShapeTable(QTable):
                 (0.7, 0.7, 0.7, v[3]) for v in self.geo_webgui._webgui_data["colors"]
             ]
             for index, shape in enumerate(self.shapes):
-                if not self.rows[index]["visible"]:
+                if not self.ui_rows[index]["visible"]:
                     self.geo_webgui._webgui_data["edge_colors"][index] = (1, 1, 1, 0)
                     continue
                 if index in self.selected:
@@ -394,7 +394,7 @@ class ShapeTable(QTable):
         self.geo_webgui.set_color(faces=self.faces, edges=self.edges)
 
     def dump(self):
-        return {"base": super().dump(), "rows": self.rows}
+        return {"base": super().dump(), "rows": self.ui_rows}
 
     def load(self, data):
         if "base" in data and data["base"] is not None:
@@ -404,9 +404,9 @@ class ShapeTable(QTable):
 
     def set_name(self, data):
         self.shapes[data["arg"]["row"]].name = data["value"]
-        self.rows[data["arg"]["row"]]["name"] = data["value"]
+        self.ui_rows[data["arg"]["row"]]["name"] = data["value"]
         if "update_inputs" in data and data["update_inputs"]:
-            self.name_inputs[data["arg"]["row"]].model_value = data["value"]
+            self.name_inputs[data["arg"]["row"]].ui_model_value = data["value"]
 
     def set_maxh(self, data):
         maxh = (
@@ -415,31 +415,31 @@ class ShapeTable(QTable):
             else float(data["value"])
         )
         self.shapes[data["arg"]["row"]].maxh = maxh
-        self.rows[data["arg"]["row"]]["maxh"] = maxh
+        self.ui_rows[data["arg"]["row"]]["maxh"] = maxh
         if "update_inputs" in data and data["update_inputs"]:
-            self.maxh_inputs[data["arg"]["row"]].model_value = data["value"]
+            self.maxh_inputs[data["arg"]["row"]].ui_model_value = data["value"]
 
     def set_visible(self, data):
-        self.rows[data["arg"]["row"]]["visible"] = data["value"]
+        self.ui_rows[data["arg"]["row"]]["visible"] = data["value"]
         if "update_inputs" in data and data["update_inputs"]:
-            self.visible_cbs[data["arg"]["row"]].model_value = data["value"]
+            self.visible_cbs[data["arg"]["row"]].ui_model_value = data["value"]
         self.update_gui()
 
     def create_row(self, props):
         row = props["row"]
 
-        visible_cb = QCheckbox(model_value=row["visible"]).on_update_model_value(
+        visible_cb = QCheckbox(ui_model_value=row["visible"]).on_update_model_value(
             self.set_visible, arg={"row": row["index"]}
         )
         name_input = QInput(
-            label="Name", debounce=500, model_value=row.get("name", None)
+            ui_label="Name", ui_debounce=500, ui_model_value=row.get("name", None)
         ).on_update_model_value(self.set_name, arg={"row": row["index"]})
         maxh_val = row.get("maxh", None)
         if maxh_val is not None and maxh_val > 1e98:
             maxh_val = None
         maxh_input = NumberInput(
-            label="Maxh",
-            model_value=maxh_val,
+            ui_label="Maxh",
+            ui_model_value=maxh_val,
         ).on_update_model_value(self.set_maxh, arg={"row": row["index"]})
         self.name_inputs[row["index"]] = name_input
         self.maxh_inputs[row["index"]] = maxh_input
@@ -466,7 +466,7 @@ class ShapeTable(QTable):
                     "visible": True,
                 }
             )
-        self.rows = rows
+        self.ui_rows = rows
         self.all_rows = rows
         if self._loaded_rows:
             for i, r in enumerate(self._loaded_rows):
@@ -480,7 +480,7 @@ class MainLayout(Div):
         self.alert_dialog = QDialog(Heading("Error"), "")
         super().__init__(self.alert_dialog, *args, id="main")
         self.shape = None
-        self.hidden = True
+        self.ui_hidden = True
         # Webgui needs to be wrapped in div so that hide/show works properly?
         self.webgui = WebguiComponent(id="webgui_geo")
         self.webgui.ui_style = "min-width:500px;height:700px"
@@ -589,7 +589,7 @@ class MainLayout(Div):
                 table.set_name(
                     {"value": name, "arg": {"row": index}, "update_inputs": True}
                 )
-            table.rows = table.rows  # trigger update
+            table.ui_rows = table.ui_rows  # trigger update
             table.update_gui()
 
         def set_selected_maxh():
@@ -684,10 +684,10 @@ class MainLayout(Div):
         )
 
         table_and_gui = QSplitter(ui_model_value=40)
-        table_and_gui.slot_before = [settings]
-        table_and_gui.slot_after = [Row(webgui_card,self.global_settings)]
+        table_and_gui.ui_slot_before = [settings]
+        table_and_gui.ui_slot_after = [Row(webgui_card,self.global_settings)]
 
-        self.children = [
+        self.ui_children = [
             table_and_gui,
             generate_mesh_button,
             self.download_mesh_button,
@@ -717,13 +717,13 @@ class MainLayout(Div):
             self.gui_toggle.ui_model_value = "mesh"
             self.webgui_div.ui_hidden = True
             self.mesh_webgui_div.ui_hidden = False
-            # self.mesh_webgui.draw(mesh, store=True)
+            self.mesh_webgui.draw(mesh, store=True)
             self.webgui.clear()
         except netgen.libngpy._meshing.NgException as e:
             print("Error in meshing", e)
-            self.alert_dialog.children[1] = str(e)
-            self.alert_dialog.show()
-        self.loading.hidden = True
+            self.alert_dialog.ui_children[1] = str(e)
+            self.alert_dialog.ui_show()
+        self.loading.ui_hidden = True
 
     def update_table_visiblity(self):
         shape_type = self.shapetype_selector.ui_model_value
@@ -736,7 +736,7 @@ class MainLayout(Div):
         self.shape = shape
         self.name = name
         bb = shape.bounding_box
-        self.geo_info.children = [
+        self.geo_info.ui_children = [
             "Boundingbox: "
             + f"({bb[0][0]:.2f},{bb[0][1]:.2f},{bb[0][2]:.2f}) - ({bb[1][0]:.2f},{bb[1][1]:.2f},{bb[1][2]:.2f})"
         ]
@@ -767,7 +767,7 @@ class MainLayout(Div):
         self.solid_table.set_shapes(self.shape.solids, face_index=face_index)
         self.face_table.set_shapes(self.shape.faces)
         self.edge_table.set_shapes(self.shape.edges)
-        self.hidden = False
+        self.ui_hidden = False
 
 
 class MeshingApp(App):
@@ -836,7 +836,7 @@ class MeshingApp(App):
 
         load_saved_btn = QBtn("Load", ui_push=True, ui_size="xl",
                               ui_color="secondary", ui_style="margin-bottom:10px;margin-top:20px;").on_click(
-            self.load_dialog.show,
+            self.load_dialog.ui_show,
         )
 
         self.geo_uploading = QInnerLoading(QSpinnerHourglass(ui_size="100px", ui_color="primary"), Centered("Loading..."), ui_showing=True)
